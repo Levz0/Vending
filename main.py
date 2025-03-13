@@ -10,42 +10,6 @@ from entities.employee import Employee
 from entities.Lamp import Lamp
 
 
-BG_COLOR = "#FFF3E0"
-ACCENT_COLOR = "#FF5722"
-TEXT_COLOR = "#212121"
-BUTTON_STYLE = {
-    "background": ACCENT_COLOR,
-    "foreground": "white",
-    "borderwidth": 0,
-    "relief": "flat",
-    "font": ("Arial", 10, "bold"),
-    "padx": 15,
-    "pady": 5
-}
-
-class RoundedFrame(Canvas):
-    """Кастомный виджет с скругленными углами"""
-    def __init__(self, master, radius=25, **kwargs):
-        super().__init__(master, **kwargs)
-        self.radius = radius
-        self.config(bg=BG_COLOR, highlightthickness=0)
-        
-    def create_rounded_rect(self, x1, y1, x2, y2, **kwargs):
-        return self.create_polygon(
-            x1+self.radius, y1,
-            x2-self.radius, y1,
-            x2, y1,
-            x2, y1+self.radius,
-            x2, y2-self.radius,
-            x2-self.radius, y2,
-            x1+self.radius, y2,
-            x1, y2,
-            x1, y2-self.radius,
-            x1, y1+self.radius,
-            x1+self.radius, y1,
-            smooth=True, **kwargs
-        )
-
 class MainApp:
     def __init__(self, root):
         self.root = root
@@ -67,7 +31,7 @@ class MainApp:
         self.employees = [
             Employee(
                 FIO=f"Иванов Иван {i}",
-                post=random.choice(self.posts).name,
+                post=random.choice(self.posts),
                 birthDate=f"199{random.randint(0,9)}-0{random.randint(1,9)}-{random.randint(10,28)}",
                 INN=random.randint(100000000000, 999999999999),
                 phoneNumber=f"+7{random.randint(9000000000, 9999999999)}",
