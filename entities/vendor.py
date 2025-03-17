@@ -1,0 +1,2 @@
+sentence = "dafafa"
+sentence.split()
