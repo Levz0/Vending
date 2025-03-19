@@ -8,7 +8,8 @@ from entities.post import Post
 from entities.LampType import LampType
 from entities.employee import Employee
 from entities.Lamp import Lamp
-
+from entities.vendor import Vendor
+from entities.vendor_usage import Vendor_usage
 
 class MainApp:
     def __init__(self, root):
@@ -46,20 +47,35 @@ class MainApp:
                 name=f"Лампа-{i}",
                 LampType=random.choice(self.lamp_types).name,
                 voltage=random.choice([220, 110]),
-                colorTemp=random.randint(3000, 6500),
+                colorTemp=random.randint(2000, 6500),
                 price=round(random.uniform(100, 1000), 2),
                 description=f"Описание лампы {i}"
             ) for i in range(1, 6)
         ]
         
         # Аппараты
+        self.vendors = [
+            Vendor(
+                code=i,
+                name=random.choice(["LightVend Pro", "BulbBox 24/7", "LumaSphere Auto", "BrightSpot Express", "EcoLamp Vend"]),
+                description=random.choice([
+                    "Компактный и надежный помощник, готовый работать круглосуточно, чтобы удовлетворить ваши потребности в любое время суток.",
+                    "Современный дизайн и интуитивно понятный интерфейс делают использование простым и удобным для каждого.",
+                    "Автономный и энергоэффективный, этот аппарат идеально подходит для мест с высокой проходимостью.",
+                    "Быстрая выдача и широкий ассортимент — всё, что нужно для вашего комфорта.",
+                    "Надежный и долговечный, этот аппарат станет вашим незаменимым спутником в повседневной жизни."
+                ])
+            ) for i in range (1, 6)
+        ]
+        # Аппараты_в_использовании
         self.apparatuses = [
-            {
-                "code": f"VM-{i:03d}",
-                "location": random.choice(["ТЦ 'МЕГА'", "Вокзал", "Офис"]),
-                "install_date": datetime.now().strftime("%Y-%m-%d"),
-                "status": random.choice(["Активен", "Неактивен"])
-            } for i in range(1, 6)
+            Vendor_usage(
+                code=i,
+                vendor = random.choice(self.vendors),
+                location= random.choice(["ТЦ 'МЕГА'", "Вокзал", "Офис"]),
+                install_date= datetime.now().strftime("%Y-%m-%d"),
+                status= random.choice(["Активен", "Неактивен", "В обслуживании"])
+            ) for i in range(1, 6)
         ]
 
     def create_widgets(self):
@@ -70,24 +86,27 @@ class MainApp:
         # Вкладка для аппаратов
         frame_app = ttk.Frame(self.notebook)
         self.create_table(frame_app, "Аппараты", 
-                         ["Код", "Локация", "Дата установки", "Статус"],
+                         ["Код", "Название", "Локация","Дата установки", "Статус"],
                          [{
-                             "Код": app["code"],
-                             "Локация": app["location"],
-                             "Дата установки": app["install_date"],
-                             "Статус": app["status"]
+                             "Код": app.code,
+                             "Название": app.vendor.name,
+                             "Локация": app.location,
+                             "Дата установки": app.install_date,
+                             "Статус": app.status
                          } for app in self.apparatuses])
         self.notebook.add(frame_app, text="Аппараты")
 
         # Вкладка для ламп
         frame_lamps = ttk.Frame(self.notebook)
         self.create_table(frame_lamps, "Лампы", 
-                         ["Название", "Тип", "Вольтаж", "Цена"],
+                         ["Название", "Тип", "Вольтаж", "Цветовая температура", "Цена", "Описание"],
                          [{
                              "Название": lamp.name,
                              "Тип": lamp.type,
                              "Вольтаж": lamp.voltage,
-                             "Цена": lamp.price
+                             "Цветовая температура": lamp.colorTemp,
+                             "Цена": lamp.price,
+                             "Описание": lamp.description
                          } for lamp in self.lamps])
         self.notebook.add(frame_lamps, text="Лампы")
 
