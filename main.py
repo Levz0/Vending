@@ -11,6 +11,15 @@ from entities.Lamp import Lamp
 from entities.vendor import Vendor
 from entities.vendor_usage import Vendor_usage
 
+# Стилизация приложения
+BG_COLOR = "#f0f2f5"
+PRIMARY_COLOR = "#1877f2"
+HOVER_COLOR = "#166fe5"
+TEXT_COLOR = "#1c1e21"
+ENTRY_BG = "#ffffff"
+FONT = ("Segoe UI", 10)
+
+
 class MainApp:
     def __init__(self, root):
         self.root = root
@@ -22,6 +31,9 @@ class MainApp:
         
         # Создание интерфейса
         self.create_widgets()
+        
+        #Создание кнопок
+        self.create_buttons()
 
     def generate_data(self):
         # Создаем случайные данные
@@ -144,6 +156,44 @@ class MainApp:
         tree.configure(yscroll=scroll.set)
         scroll.pack(side=RIGHT, fill=Y)
         tree.pack(fill=BOTH, expand=True)
+        
+    def create_buttons(self):
+        # Создаем фрейм для кнопок
+        button_frame = ttk.Frame(self.root)
+        button_frame.pack(pady=10, fill=X, padx=20)
+
+        # Стиль для ttk виджетов
+        style = ttk.Style()
+        style.theme_use('clam')
+
+        # Конфигурация стиля для кнопок
+        style.configure('Primary.TButton', 
+                        font=FONT,
+                        background=PRIMARY_COLOR,
+                        foreground='white',
+                        borderwidth=0,
+                        padding=10,
+                        focuscolor=PRIMARY_COLOR)
+
+        style.map('Primary.TButton',
+                background=[('active', HOVER_COLOR), ('disabled', '#dddfe2')],
+                foreground=[('disabled', '#606770')])
+
+        # Кнопка "Добавить" с правильным стилем
+        b_add = ttk.Button(
+            button_frame,
+            text="Добавить",
+            style='Primary.TButton'
+        )
+        b_add.pack(side=LEFT, padx=5)
+
+        # Можно добавить другие кнопки аналогично
+        b_edit = ttk.Button(
+            button_frame,
+            text="Редактировать",
+            style='Primary.TButton'
+        )
+        b_edit.pack(side=LEFT, padx=5)
 
 
 
