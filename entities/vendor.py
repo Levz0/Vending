@@ -5,6 +5,6 @@ class Vendor():
         self.description = description
     
     def __str__(self):
-        return f"The vendor {self.name} is a {self.descriptiondesc}"
+        return self.name
     
     

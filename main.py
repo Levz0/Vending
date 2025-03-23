@@ -1,9 +1,18 @@
 from tkinter import ttk, Tk
 from tkinter import *
 import random
-from datetime import datetime
+from datetime import datetime, timedelta
 
-# Импорт классов (предполагается, что файлы находятся в соседней папке)
+# Цветовая схема
+BG_COLOR = "#f8f9fa"
+PRIMARY_COLOR = "#007bff"
+SECONDARY_COLOR = "#6c757d"
+HOVER_COLOR = "#0056b3"
+TEXT_COLOR = "#212529"
+FONT = ("Segoe UI", 10)
+TABLE_HEADER_STYLE = {"background": PRIMARY_COLOR, "foreground": "white"}
+
+# Импорт классов (предположим, что эти импорты нужны для других частей проекта)
 from entities.post import Post
 from entities.LampType import LampType
 from entities.employee import Employee
@@ -11,190 +20,172 @@ from entities.Lamp import Lamp
 from entities.vendor import Vendor
 from entities.vendor_usage import Vendor_usage
 
-# Стилизация приложения
-BG_COLOR = "#f0f2f5"
-PRIMARY_COLOR = "#1877f2"
-HOVER_COLOR = "#166fe5"
-TEXT_COLOR = "#1c1e21"
-ENTRY_BG = "#ffffff"
-FONT = ("Segoe UI", 10)
-
 
 class MainApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Vending Management System")
-        self.root.geometry("1200x600")
-        
-        # Генерация тестовых данных
+        self.root.title("Vending Master Pro")
+        self.root.geometry("1280x720")
+        self.configure_styles()
         self.generate_data()
-        
-        # Создание интерфейса
         self.create_widgets()
+
+    def configure_styles(self):
+        style = ttk.Style()
+        style.theme_use("clam")
         
-        #Создание кнопок
-        self.create_buttons()
+        # Общие настройки стилей
+        style.configure(".", background=BG_COLOR, font=FONT)
+        style.configure("TNotebook", background=BG_COLOR)
+        style.configure("TNotebook.Tab", 
+                      background=SECONDARY_COLOR,
+                      foreground="white",
+                      padding=[15, 5],
+                      font=FONT)
+        style.map("TNotebook.Tab", 
+                 background=[("selected", PRIMARY_COLOR)],
+                 foreground=[("selected", "white")])
+        
+        # Стиль для кнопок
+        style.configure("Primary.TButton", 
+                       background=PRIMARY_COLOR,
+                       foreground="white",
+                       borderwidth=0,
+                       padding=10)
+        style.map("Primary.TButton",
+                 background=[("active", HOVER_COLOR), ("disabled", "#ced4da")])
+        
+        # Стиль для таблиц
+        style.configure("Treeview.Heading", **TABLE_HEADER_STYLE)
+        style.configure("Treeview", 
+                       rowheight=30,
+                       background="#ffffff",
+                       fieldbackground="#ffffff")
 
     def generate_data(self):
-        # Создаем случайные данные
-        self.posts = [Post("Менеджер"), Post("Техник"), Post("Оператор")]
-        self.lamp_types = [LampType("Светодиодная"), LampType("Люминесцентная")]
+        # Генерация данных для сотрудников
+        self.employees = []
+        for i in range(1, 6):
+            FIO = f"Сотрудник {i}"
+            post = Post(random.choice(["Менеджер", "Техник", "Администратор"]))
+            birthDate = (datetime.now() - timedelta(days=365*random.randint(25,50))).strftime("%Y-%m-%d")
+            INN = f"{random.randint(1000000000, 9999999999)}"
+            phoneNumber = f"+7 900 123456{i}"
+            login = f"user{i}"
+            password = f"pass{i}"
+            self.employees.append(Employee(FIO, post, birthDate, INN, phoneNumber, login, password))
         
-        # Сотрудники
-        self.employees = [
-            Employee(
-                FIO=f"Иванов Иван {i}",
-                post=random.choice(self.posts),
-                birthDate=f"199{random.randint(0,9)}-0{random.randint(1,9)}-{random.randint(10,28)}",
-                INN=random.randint(100000000000, 999999999999),
-                phoneNumber=f"+7{random.randint(9000000000, 9999999999)}",
-                login=f"user{i}",
-                password="12345"
-            ) for i in range(1, 6)
-        ]
+        # Генерация данных для ламп
+        self.lamps = []
+        lamp_types = [LampType("LED"), LampType("Галогенная"), LampType("Люминесцентная")]
+        for i in range(1, 6):
+            name = f"Лампа {i}"
+            lamp_type = random.choice(lamp_types)
+            voltage = random.choice([110, 220])
+            colorTemp = random.choice(["Тёплый", "Нейтральный", "Холодный"])
+            price = random.randint(100, 500)
+            description = f"Описание лампы {i}"
+            self.lamps.append(Lamp(name, lamp_type, voltage, colorTemp, price, description))
         
-        # Лампы
-        self.lamps = [
-            Lamp(
-                name=f"Лампа-{i}",
-                LampType=random.choice(self.lamp_types).name,
-                voltage=random.choice([220, 110]),
-                colorTemp=random.randint(2000, 6500),
-                price=round(random.uniform(100, 1000), 2),
-                description=f"Описание лампы {i}"
-            ) for i in range(1, 6)
-        ]
-        
-        # Аппараты
-        self.vendors = [
-            Vendor(
-                code=i,
-                name=random.choice(["LightVend Pro", "BulbBox 24/7", "LumaSphere Auto", "BrightSpot Express", "EcoLamp Vend"]),
-                description=random.choice([
-                    "Компактный и надежный помощник, готовый работать круглосуточно, чтобы удовлетворить ваши потребности в любое время суток.",
-                    "Современный дизайн и интуитивно понятный интерфейс делают использование простым и удобным для каждого.",
-                    "Автономный и энергоэффективный, этот аппарат идеально подходит для мест с высокой проходимостью.",
-                    "Быстрая выдача и широкий ассортимент — всё, что нужно для вашего комфорта.",
-                    "Надежный и долговечный, этот аппарат станет вашим незаменимым спутником в повседневной жизни."
-                ])
-            ) for i in range (1, 6)
-        ]
-        # Аппараты_в_использовании
-        self.apparatuses = [
-            Vendor_usage(
-                code=i,
-                vendor = random.choice(self.vendors),
-                location= random.choice(["ТЦ 'МЕГА'", "Вокзал", "Офис"]),
-                install_date= datetime.now().strftime("%Y-%m-%d"),
-                status= random.choice(["Активен", "Неактивен", "В обслуживании"])
-            ) for i in range(1, 6)
-        ]
+        # Генерация данных для аппаратов (используем Vendor_usage)
+        self.vendor_usages = []
+        vendors = [Vendor(f"V-{i:03d}", f"Вендор {i}", "Описание") for i in range(1, 4)]
+        locations = ["Локация 1", "Локация 2", "Локация 3"]
+        for i in range(1, 6):
+            code = f"APP-{i:03d}"
+            vendor = random.choice(vendors)
+            install_date = (datetime.now() - timedelta(days=random.randint(30, 365))).strftime("%Y-%m-%d")
+            location = random.choice(locations)
+            status = random.choice(["Активен", "Неактивен", "В обслуживании"])
+            self.vendor_usages.append(Vendor_usage(code, vendor, install_date, location, status))
 
     def create_widgets(self):
-        # Создаем Notebook для вкладок
-        self.notebook = ttk.Notebook(self.root)  # Делаем notebook атрибутом класса
+        main_frame = ttk.Frame(self.root)
+        main_frame.pack(fill=BOTH, expand=True, padx=20, pady=20)
+
+        # Ноутбук с вкладками
+        self.notebook = ttk.Notebook(main_frame)
         self.notebook.pack(fill=BOTH, expand=True)
 
-        # Вкладка для аппаратов
-        frame_app = ttk.Frame(self.notebook)
-        self.create_table(frame_app, "Аппараты", 
-                         ["Код", "Название", "Локация","Дата установки", "Статус"],
-                         [{
-                             "Код": app.code,
-                             "Название": app.vendor.name,
-                             "Локация": app.location,
-                             "Дата установки": app.install_date,
-                             "Статус": app.status
-                         } for app in self.apparatuses])
-        self.notebook.add(frame_app, text="Аппараты")
+        # Вкладка "Аппараты" (на основе Vendor_usage)
+        apparatus_columns = [
+            ("Код", "code"),
+            ("Вендор", "vendor"),
+            ("Дата установки", "install_date"),
+            ("Локация", "location"),
+            ("Статус", "status")
+        ]
+        self.create_tab("Аппараты", apparatus_columns, self.vendor_usages)
+        
+        # Вкладка "Лампы"
+        lamp_columns = [
+            ("Название", "name"),
+            ("Тип", "type"),
+            ("Вольтаж", "voltage"),
+            ("Цветовая температура", "colorTemp"),
+            ("Цена", "price"),
+            ("Описание", "description")
+        ]
+        self.create_tab("Лампы", lamp_columns, self.lamps)
+        
+        # Вкладка "Сотрудники"
+        employee_columns = [
+            ("ФИО", "FIO"),
+            ("Должность", "post"),
+            ("Дата рождения", "birthDate"),
+            ("ИНН", "INN"),
+            ("Телефон", "phoneNumber"),
+            ("Логин", "login"),
+            ("Пароль", "password")
+        ]
+        self.create_tab("Сотрудники", employee_columns, self.employees)
 
-        # Вкладка для ламп
-        frame_lamps = ttk.Frame(self.notebook)
-        self.create_table(frame_lamps, "Лампы", 
-                         ["Название", "Тип", "Вольтаж", "Цветовая температура", "Цена", "Описание"],
-                         [{
-                             "Название": lamp.name,
-                             "Тип": lamp.type,
-                             "Вольтаж": lamp.voltage,
-                             "Цветовая температура": lamp.colorTemp,
-                             "Цена": lamp.price,
-                             "Описание": lamp.description
-                         } for lamp in self.lamps])
-        self.notebook.add(frame_lamps, text="Лампы")
+        # Панель управления
+        control_frame = ttk.Frame(main_frame)
+        control_frame.pack(fill=X, pady=10)
+        
+        actions = ["Добавить", "Редактировать", "Удалить", "Обновить", "Экспорт"]
+        for action in actions:
+            ttk.Button(control_frame, 
+                       text=action, 
+                       style="Primary.TButton").pack(side=LEFT, padx=5)
 
-        # Вкладка для сотрудников
-        frame_emp = ttk.Frame(self.notebook)
-        self.create_table(frame_emp, "Сотрудники", 
-                         ["ФИО", "Должность", "Телефон", "ИНН"],
-                         [{
-                             "ФИО": emp.FIO,
-                             "Должность": emp.post,
-                             "Телефон": emp.phoneNumber,
-                             "ИНН": emp.INN
-                         } for emp in self.employees])
-        self.notebook.add(frame_emp, text="Сотрудники")
-
-    def create_table(self, parent, title, columns, data):
-        # Заголовок
-        label = Label(parent, text=title, font=('Arial', 14, 'bold'))
-        label.pack(pady=10)
-
+    def create_tab(self, title, columns, data):
+        """
+        columns - список кортежей вида (Заголовок, имя_свойства)
+        data - список объектов
+        """
+        frame = ttk.Frame(self.notebook)
+        self.notebook.add(frame, text=title)
+        
         # Таблица
-        tree = ttk.Treeview(parent, columns=columns, show='headings', height=10)
+        tree_frame = ttk.Frame(frame)
+        tree_frame.pack(fill=BOTH, expand=True, padx=10, pady=10)
         
-        # Настройка столбцов
-        for col in columns:
-            tree.heading(col, text=col)
-            tree.column(col, width=150, anchor=CENTER)
+        # Извлекаем только заголовки для Treeview
+        col_headers = [col[0] for col in columns]
+        tree = ttk.Treeview(tree_frame, columns=col_headers, show='headings', height=15)
+        vsb = ttk.Scrollbar(tree_frame, orient="vertical", command=tree.yview)
+        tree.configure(yscrollcommand=vsb.set)
         
-        # Добавление данных
+        # Настройка колонок
+        for header, attr in columns:
+            tree.heading(header, text=header, anchor=CENTER)
+            tree.column(header, width=150, anchor=CENTER)
+        
+        # Заполнение данными
         for item in data:
-            tree.insert('', END, values=[item[col] for col in columns])
+            row = []
+            for header, attr in columns:
+                value = getattr(item, attr, "")
+                # Если значение является объектом, выводим его строковое представление
+                if not isinstance(value, (str, int, float)):
+                    value = str(value)
+                row.append(value)
+            tree.insert('', END, values=row)
         
-        # Скроллбар
-        scroll = ttk.Scrollbar(parent, orient=VERTICAL, command=tree.yview)
-        tree.configure(yscroll=scroll.set)
-        scroll.pack(side=RIGHT, fill=Y)
-        tree.pack(fill=BOTH, expand=True)
-        
-    def create_buttons(self):
-        # Создаем фрейм для кнопок
-        button_frame = ttk.Frame(self.root)
-        button_frame.pack(pady=10, fill=X, padx=20)
-
-        # Стиль для ttk виджетов
-        style = ttk.Style()
-        style.theme_use('clam')
-
-        # Конфигурация стиля для кнопок
-        style.configure('Primary.TButton', 
-                        font=FONT,
-                        background=PRIMARY_COLOR,
-                        foreground='white',
-                        borderwidth=0,
-                        padding=10,
-                        focuscolor=PRIMARY_COLOR)
-
-        style.map('Primary.TButton',
-                background=[('active', HOVER_COLOR), ('disabled', '#dddfe2')],
-                foreground=[('disabled', '#606770')])
-
-        # Кнопка "Добавить" с правильным стилем
-        b_add = ttk.Button(
-            button_frame,
-            text="Добавить",
-            style='Primary.TButton'
-        )
-        b_add.pack(side=LEFT, padx=5)
-
-        # Можно добавить другие кнопки аналогично
-        b_edit = ttk.Button(
-            button_frame,
-            text="Редактировать",
-            style='Primary.TButton'
-        )
-        b_edit.pack(side=LEFT, padx=5)
-
+        vsb.pack(side=RIGHT, fill="y")
+        tree.pack(side=LEFT, fill=BOTH, expand=True)
 
 
 if __name__ == "__main__":
