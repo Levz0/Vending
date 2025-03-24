@@ -13,21 +13,27 @@ FONT = ("Segoe UI", 10)
 TABLE_HEADER_STYLE = {"background": PRIMARY_COLOR, "foreground": "white"}
 
 # Импорт классов (предположим, что эти импорты нужны для других частей проекта)
-from entities.post import Post
-from entities.LampType import LampType
-from entities.employee import Employee
-from entities.Lamp import Lamp
-from entities.vendor import Vendor
-from entities.vendor_usage import Vendor_usage
-
+from Directory.post import Post
+from Directory.LampType import LampType
+from Directory.employee import Employee
+from Directory.Lamp import Lamp
+from Directory.vendor import Vendor
+from Directory.vendor_usage import Vendor_usage
+from Documents.Refill import Refill
+from db import DataBase
 
 class MainApp:
     def __init__(self, root):
+        self.host = "127.0.0.1"
+        self.user = "root"
+        self.password = ""
+        self.database = "Vending"
+        self.db = DataBase(self.host, self.user, self.password, self.database)
         self.root = root
         self.root.title("Vending Master Pro")
         self.root.geometry("1280x720")
         self.configure_styles()
-        self.generate_data()
+        self.fetch_data()
         self.create_widgets()
 
     def configure_styles(self):
@@ -62,43 +68,68 @@ class MainApp:
                        background="#ffffff",
                        fieldbackground="#ffffff")
 
-    def generate_data(self):
-        # Генерация данных для сотрудников
+    def fetch_data(self):
+        # Получение данных сотрудников
         self.employees = []
-        for i in range(1, 6):
-            FIO = f"Сотрудник {i}"
-            post = Post(random.choice(["Менеджер", "Техник", "Администратор"]))
-            birthDate = (datetime.now() - timedelta(days=365*random.randint(25,50))).strftime("%Y-%m-%d")
-            INN = f"{random.randint(1000000000, 9999999999)}"
-            phoneNumber = f"+7 900 123456{i}"
-            login = f"user{i}"
-            password = f"pass{i}"
-            self.employees.append(Employee(FIO, post, birthDate, INN, phoneNumber, login, password))
+        self.db.connect()
+        self.db.cursor.execute("Select * from Employee")
+        result = self.db.cursor.fetchall()
+        for employee in result:
+            TAB = employee[0]
+            FIO = employee[1]
+            self.db.cursor.execute(f"SELECT Name FROM Post WHERE id = {employee[2]}")   
+            post = self.db.cursor.fetchone()[0]
+            birthDate = employee[3]
+            INN = employee[4]
+            phoneNumber = employee[5]
+            login = employee[6]
+            password = employee[7]
+            self.employees.append(Employee(TAB, FIO, post, birthDate, INN, phoneNumber, login, password))
         
-        # Генерация данных для ламп
+         # Получение данных ламп
         self.lamps = []
-        lamp_types = [LampType("LED"), LampType("Галогенная"), LampType("Люминесцентная")]
-        for i in range(1, 6):
-            name = f"Лампа {i}"
-            lamp_type = random.choice(lamp_types)
-            voltage = random.choice([110, 220])
-            colorTemp = random.choice(["Тёплый", "Нейтральный", "Холодный"])
-            price = random.randint(100, 500)
-            description = f"Описание лампы {i}"
-            self.lamps.append(Lamp(name, lamp_type, voltage, colorTemp, price, description))
+        self.db.cursor.execute("Select * from Lamps")
+        result = self.db.cursor.fetchall()
+        for lamp in result:
+            code = lamp[0]
+            article = lamp[1]
+            name = lamp[2]
+            self.db.cursor.execute(f"SELECT Name FROM Lamp_Type WHERE id = {lamp[7]}")   
+            lamp_type = self.db.cursor.fetchone()[0]            
+            voltage = lamp[3]
+            colorTemp = lamp[4]
+            price = lamp[5]
+            description = lamp[6]
+            self.lamps.append(Lamp(code, article, name, lamp_type, voltage, colorTemp, price, description))
         
-        # Генерация данных для аппаратов (используем Vendor_usage)
+        # Получение данных аппаратов в эксплуатации
         self.vendor_usages = []
-        vendors = [Vendor(f"V-{i:03d}", f"Вендор {i}", "Описание") for i in range(1, 4)]
-        locations = ["Локация 1", "Локация 2", "Локация 3"]
-        for i in range(1, 6):
-            code = f"APP-{i:03d}"
-            vendor = random.choice(vendors)
-            install_date = (datetime.now() - timedelta(days=random.randint(30, 365))).strftime("%Y-%m-%d")
-            location = random.choice(locations)
-            status = random.choice(["Активен", "Неактивен", "В обслуживании"])
+        self.db.cursor.execute("Select * from Vendor_usage")
+        result = self.db.cursor.fetchall()
+        for vendor_usages in result:
+            code = vendor_usages[0]
+            self.db.cursor.execute(f"SELECT Name FROM Vendors WHERE id = {vendor_usages[1]}")   
+            vendor = self.db.cursor.fetchone()[0]   
+            install_date = vendor_usages[2]
+            self.db.cursor.execute(f"SELECT Name FROM Location WHERE id = {vendor_usages[3]}")   
+            location = self.db.cursor.fetchone()[0]   
+            status = vendor_usages[4]
             self.vendor_usages.append(Vendor_usage(code, vendor, install_date, location, status))
 
+
+        # Получение данных заправок  
+        self.refills = []
+        self.db.cursor.execute("Select * from Refill")
+        result = self.db.cursor.fetchall()    
+        for refill in result:
+            code = refill[0]
+            self.db.cursor.execute(f"SELECT FIO FROM Employee WHERE id = {refill[1]}")   
+            employee = self.db.cursor.fetchone()[0]  
+            self.db.cursor.execute(f"Select Name from Vendors where id = (Select id_vendor from Vendor_usage where id = {refill[2]})")   
+            vendor = self.db.cursor.fetchone()[0]    
+            date = refill[3]
+            self.refills.append(Refill(code, employee, vendor, date))
+        
     def create_widgets(self):
         main_frame = ttk.Frame(self.root)
         main_frame.pack(fill=BOTH, expand=True, padx=20, pady=20)
@@ -119,6 +150,8 @@ class MainApp:
         
         # Вкладка "Лампы"
         lamp_columns = [
+            ("Код", "code"),
+            ("Артикул", "article"),
             ("Название", "name"),
             ("Тип", "type"),
             ("Вольтаж", "voltage"),
@@ -130,6 +163,7 @@ class MainApp:
         
         # Вкладка "Сотрудники"
         employee_columns = [
+            ("Табельный номер", "TAB"),
             ("ФИО", "FIO"),
             ("Должность", "post"),
             ("Дата рождения", "birthDate"),
@@ -140,6 +174,17 @@ class MainApp:
         ]
         self.create_tab("Сотрудники", employee_columns, self.employees)
 
+
+        # Вкладка "Заправки"
+        refill_columns = [
+            ("Код", "code"),
+            ("ФИО сотрудника", "employee"),
+            ("Аппарат", "vendor_usage"),
+            ("Дата", "date")
+        ]
+        self.create_tab("Заправки", refill_columns, self.refills)
+        
+        
         # Панель управления
         control_frame = ttk.Frame(main_frame)
         control_frame.pack(fill=X, pady=10)
