@@ -53,7 +53,7 @@ class ReportsWindow:
             row += 1
             
             # Заголовок отчета по центру
-            if "неполадок" in title.lower():
+            if "неполадках" in title.lower():
                 header_text = "Неполадки аппаратов за период"
             elif "реализованным" in title.lower():
                 header_text = "Реализованные лампы каждого аппарата за период"
