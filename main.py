@@ -3,6 +3,9 @@ import tkinter.font as tkFont
 from tkinter import *
 import random
 from datetime import datetime, timedelta
+from tkcalendar import DateEntry
+import os
+import sys
 
 # Цветовая схема
 BG_COLOR = "#f8f9fa"
@@ -75,9 +78,48 @@ class MainApp:
                        fieldbackground="#ffffff")
 
     def fetch_data(self):
+        self.db.connect()
+        
+        # Получение данных должностей
+        self.posts = []
+        self.db.cursor.execute("Select * from Post")
+        result = self.db.cursor.fetchall()
+        for post in result:
+            id_post = post[0]
+            name = post[1]
+            self.posts.append(Post(id_post, name))        
+        
+        # Получение данных типов ламп
+        self.lamp_types = []
+        self.db.cursor.execute("Select * from Lamp_Type")
+        result = self.db.cursor.fetchall()
+        for lamp_type in result:
+            id_type = lamp_type[0]
+            name = lamp_type[1]
+            self.lamp_types.append(LampType(id_type, name))
+            
+        # Получение данных локаций
+        self.locations = []
+        self.db.cursor.execute("Select * from location")
+        result = self.db.cursor.fetchall()
+        for location in result:
+            id_loc = location[0]
+            name_object = location[1]
+            address = location[2]
+            self.locations.append(Location(id_loc, name_object, address))
+            
+        # Получение данных аппаратов   
+        self.vendors = []
+        self.db.cursor.execute("Select * from Vendors")
+        result = self.db.cursor.fetchall()
+        for vendor in result:
+            id_vendor = vendor[0]
+            name = vendor[1]
+            description = vendor[2]
+            self.vendors.append(Vendor(id_vendor, name, description))
+            
         # Получение данных сотрудников
         self.employees = []
-        self.db.connect()
         self.db.cursor.execute("Select * from Employee")
         result = self.db.cursor.fetchall()
         for employee in result:
@@ -122,7 +164,7 @@ class MainApp:
             install_date = vendor_usages[2]
             self.db.cursor.execute(f"SELECT * FROM Location WHERE id = {vendor_usages[3]}")   
             location = self.db.cursor.fetchone()
-            location = Location(location[0],location[1])  
+            location = Location(location[0],location[1], location[2])  
             status = vendor_usages[4]
             self.vendor_usages.append(Vendor_usage(code, vendor, install_date, location, status))
 
@@ -271,14 +313,304 @@ class MainApp:
         
         actions = ["Добавить", "Редактировать", "Удалить", "Обновить"]
         for action in actions:
-            ttk.Button(control_frame, 
-                       text=action, 
-                       style="Primary.TButton").pack(side=LEFT, padx=5)
-            
-        ttk.Button(control_frame, text="Отчеты", style="Primary.TButton", command=self.open_reports_window).pack(side=LEFT, padx=5)
+            if action == "Добавить":
+                ttk.Button(control_frame, 
+                        text=action, 
+                        style="Primary.TButton",
+                        command=lambda: self.open_add_form(self.notebook.index(self.notebook.select()))).pack(side=LEFT, padx=5)
+            else:
+                ttk.Button(control_frame, 
+                        text=action, 
+                   style="Primary.TButton").pack(side=LEFT, padx=5)
 
     import tkinter.font as tkFont
 
+    def open_add_form(self, current_tab_index):
+        tab_name = self.notebook.tab(current_tab_index, "text")
+        
+        match tab_name:
+            case "Аппараты":
+                self.show_add_vendor_usage_form()
+            case "Лампы":
+                self.show_add_lamp_form()
+            case "Сотрудники":
+                self.show_add_employee_form()
+            case "Заправки":
+                self.show_add_refill_form()
+            case "Неполадки":
+                self.show_add_malfunction_form()  
+            case "Продажи":
+                self.show_add_sale_form()
+            case _:
+                print("Неизвестная вкладка для добавления")
+
+
+    # Форма для добавления аппаратов (Vendor_usage)
+    def show_add_vendor_usage_form(self):
+        form = Toplevel(self.root)
+        form.title("Добавление автомата (Vendor_usage)")
+        form.geometry("430x350")
+        frame = ttk.Frame(form)
+        frame.grid(padx=10, pady=10)  # Используем grid() вместо pack()
+
+        ttk.Label(frame, text="Модель аппарата").grid(row=0, column=0, sticky="w", pady=5)
+        entry_vendor = ttk.Combobox(frame, state="readonly", values=[vendor.name for vendor in self.vendors])
+        entry_vendor.grid(row=0, column=1, pady=5, sticky="ew")
+
+        ttk.Label(frame, text="Дата установки (ГГГГ-ММ-ДД):").grid(row=1, column=0, sticky="w", pady=5)
+        entry_install_date = DateEntry(frame, 
+                                       date_pattern = 'dd-MM-yyyy',
+                                       locale = 'ru_RU', state = "readonly", maxdate = datetime.now())
+        entry_install_date.grid(row=1, column=1, pady=5, sticky="ew") 
+
+        ttk.Label(frame, text="Локация:").grid(row=2, column=0, sticky="w", pady=5)
+        entry_location = ttk.Combobox(frame, state="readonly", values=[location.name for location in self.locations])
+        entry_location.grid(row=2, column=1, pady=5, sticky="ew")
+
+        ttk.Label(frame, text="Статус (Активен/Неактивен/В обслуживании):").grid(row=3, column=0, sticky="w", pady=5)
+        entry_status = ttk.Combobox(frame, state="readonly", values=["Активен", "Неактивен", "В обслуживании"])
+        entry_status.grid(row=3, column=1, pady=5, sticky="ew")
+
+        save_button = ttk.Button(frame, text="Сохранить", command=lambda: print("Сохранение автомата"))
+        save_button.grid(row=4, column=0, columnspan=2, pady=10)
+
+        form.mainloop()
+
+
+
+    # Форма для добавления лампы
+    def show_add_lamp_form(self):
+        form = Toplevel(self.root)
+        form.title("Добавление лампы")
+        form.geometry("400x400")
+        
+        frame = ttk.Frame(form)
+        frame.pack(padx=10, pady=10, fill="x")
+        
+        ttk.Label(frame, text="Артикул:").grid(row=0, column=0, sticky="w", pady=5)
+        entry_article = ttk.Entry(frame)
+        entry_article.grid(row=0, column=1, pady=5, sticky="ew")
+        
+        ttk.Label(frame, text="Название:").grid(row=1, column=0, sticky="w", pady=5)
+        entry_name = ttk.Entry(frame)
+        entry_name.grid(row=1, column=1, pady=5, sticky="ew")
+        
+        ttk.Label(frame, text="Тип лампы ").grid(row=6, column=0, sticky="w", pady=5)
+        entry_type = ttk.Combobox(frame, state="readonly", values=[lamp_type.name for lamp_type in self.lamp_types])        
+        entry_type.grid(row=6, column=1, pady=5, sticky="ew")
+        
+        ttk.Label(frame, text="Напряжение:").grid(row=2, column=0, sticky="w", pady=5)
+        entry_voltage = ttk.Entry(frame)
+        entry_voltage.grid(row=2, column=1, pady=5, sticky="ew")
+        
+        ttk.Label(frame, text="Цветовая температура:").grid(row=3, column=0, sticky="w", pady=5)
+        entry_colorTemp = ttk.Entry(frame)
+        entry_colorTemp.grid(row=3, column=1, pady=5, sticky="ew")
+        
+        ttk.Label(frame, text="Цена:").grid(row=4, column=0, sticky="w", pady=5)
+        entry_price = ttk.Entry(frame)
+        entry_price.grid(row=4, column=1, pady=5, sticky="ew")
+        
+        ttk.Label(frame, text="Описание:").grid(row=5, column=0, sticky="w", pady=5)
+        text_description = Text(frame, width=25, height=5, wrap="word")  # height=5 означает 5 строк текста
+        text_description.grid(row=5, column=1, pady=6, sticky="ew")
+
+        # Если нужно имитировать вид ttk.Entry:
+        text_description.configure(
+            relief="solid",  # Граница как у Entry
+            borderwidth=1,
+            highlightthickness=0,
+            padx=2, pady=2
+        )
+        
+                
+        ttk.Button(form, text="Сохранить", command=lambda: print("Сохранение лампы")).pack(pady=10)
+        form.mainloop()
+
+
+    # Форма для добавления сотрудника
+    def show_add_employee_form(self):
+        form = Toplevel(self.root)
+        form.title("Добавление сотрудника")
+        form.geometry("400x400")
+        
+        frame = ttk.Frame(form)
+        frame.pack(padx=10, pady=10, fill="x")
+        
+        ttk.Label(frame, text="ФИО:").grid(row=0, column=0, sticky="ew", pady=5)
+        entry_FIO = ttk.Entry(frame)
+        entry_FIO.grid(row=0, column=1, pady=5, sticky="ew")
+        
+        ttk.Label(frame, text="Должность:").grid(row=1, column=0, sticky="w", pady=5)
+        entry_post = ttk.Combobox(frame, state="readonly", values=[post for post in self.posts])
+        entry_post.grid(row=1, column=1, pady=5, sticky="ew")
+        
+        ttk.Label(frame, text="Дата рождения:").grid(row=2, column=0, sticky="w", pady=5)
+        entry_birth_date = DateEntry(frame, 
+                                       date_pattern = 'dd-MM-yyyy',
+                                       locale = 'ru_RU', state = "readonly", maxdate = datetime.now())
+        entry_birth_date.grid(row=2, column=1, pady=5, sticky="ew") 
+        
+        ttk.Label(frame, text="ИНН:").grid(row=3, column=0, sticky="w", pady=5)
+        entry_INN = ttk.Entry(frame)
+        entry_INN.grid(row=3, column=1, pady=5, sticky="ew")
+        
+        ttk.Label(frame, text="Телефон:").grid(row=4, column=0, sticky="w", pady=5)
+        entry_phone = ttk.Entry(frame)
+        entry_phone.grid(row=4, column=1, pady=5, sticky="ew")
+        
+        ttk.Label(frame, text="Логин:").grid(row=5, column=0, sticky="w", pady=5)
+        entry_login = ttk.Entry(frame)
+        entry_login.grid(row=5, column=1, pady=5, sticky="ew")
+        
+        ttk.Label(frame, text="Пароль:").grid(row=6, column=0, sticky="w", pady=5)
+        entry_password = ttk.Entry(frame)
+        entry_password.grid(row=6, column=1, pady=5, sticky="ew")
+        
+        ttk.Button(form, text="Сохранить", command=lambda: print("Сохранение сотрудника")).pack(pady=10)
+        form.mainloop()
+
+
+    # Форма для добавления заправки (Refill) с табличной частью (Lamp_Refills)
+    def show_add_refill_form(self):
+        form = Toplevel(self.root)
+        form.title("Добавление заправки")
+        form.geometry("500x500")
+        
+        frame = ttk.Frame(form)
+        frame.pack(padx=10, pady=10, fill="x")
+        
+        ttk.Label(frame, text="Сотрудник:").grid(row=0, column=0, sticky="w", pady=5)
+        entry_employee = ttk.Entry(frame)
+        entry_employee.grid(row=0, column=1, pady=5, sticky="ew")
+        
+        ttk.Label(frame, text="Аппарат:").grid(row=1, column=0, sticky="w", pady=5)
+        entry_vendor_usage = ttk.Combobox(frame, values=[vendor_usage for vendor_usage in self.vendor_usages])
+        entry_vendor_usage.grid(row=1, column=1, pady=5, sticky="ew")
+        
+        ttk.Label(frame, text="Дата (ГГГГ-ММ-ДД):").grid(row=2, column=0, sticky="w", pady=5)
+        entry_date = ttk.Entry(frame)
+        entry_date.grid(row=2, column=1, pady=5, sticky="ew")
+        
+        # Табличная часть для Lamp_Refills
+        ttk.Label(form, text="Табличная часть: данные для Lamp_Refills", font=("Segoe UI", 10, "bold")).pack(pady=5)
+        table_frame = ttk.Frame(form)
+        table_frame.pack(fill="both", expand=True, padx=10, pady=5)
+        
+        columns = ("id_lamp", "quantity", "price")
+        tree = ttk.Treeview(table_frame, columns=columns, show="headings")
+        for col in columns:
+            tree.heading(col, text=col)
+            tree.column(col, width=100, anchor="center")
+        tree.pack(side="left", fill="both", expand=True)
+        
+        vsb = ttk.Scrollbar(table_frame, orient="vertical", command=tree.yview)
+        tree.configure(yscrollcommand=vsb.set)
+        vsb.pack(side="right", fill="y")
+        
+        ttk.Button(form, text="Добавить строку в табличную часть", command=lambda: self.add_lamp_refill_row(tree)).pack(pady=5)
+        
+        ttk.Button(form, text="Сохранить", command=lambda: print("Сохранение заправки с табличной частью")).pack(pady=10)
+        form.mainloop()
+
+
+    # Форма для добавления неполадки
+    def show_add_malfunction_form(self):
+        form = Toplevel(self.root)
+        form.title("Добавление неполадки")
+        form.geometry("500x400")
+        
+        frame = ttk.Frame(form)
+        frame.pack(padx=10, pady=10, fill="x")
+        
+        ttk.Label(frame, text="ID типа неполадки:").grid(row=0, column=0, sticky="w", pady=5)
+        entry_type = ttk.Entry(frame)
+        entry_type.grid(row=0, column=1, pady=5, sticky="ew")
+        
+        ttk.Label(frame, text="ID автомата (Vendor_usage):").grid(row=1, column=0, sticky="w", pady=5)
+        entry_vendor_usage = ttk.Entry(frame)
+        entry_vendor_usage.grid(row=1, column=1, pady=5, sticky="ew")
+        
+        ttk.Label(frame, text="ID сотрудника (опционально):").grid(row=2, column=0, sticky="w", pady=5)
+        entry_employee = ttk.Entry(frame)
+        entry_employee.grid(row=2, column=1, pady=5, sticky="ew")
+        
+        ttk.Label(frame, text="Статус (Новая/В процессе/Решена):").grid(row=3, column=0, sticky="w", pady=5)
+        entry_status = ttk.Entry(frame)
+        entry_status.grid(row=3, column=1, pady=5, sticky="ew")
+        
+        ttk.Label(frame, text="Причина:").grid(row=4, column=0, sticky="w", pady=5)
+        entry_reason = ttk.Entry(frame)
+        entry_reason.grid(row=4, column=1, pady=5, sticky="ew")
+        
+        ttk.Label(frame, text="Дата возникновения (ГГГГ-ММ-ДД):").grid(row=5, column=0, sticky="w", pady=5)
+        entry_report_date = ttk.Entry(frame)
+        entry_report_date.grid(row=5, column=1, pady=5, sticky="ew")
+        
+        ttk.Label(frame, text="Дата починки (ГГГГ-ММ-ДД, опционально):").grid(row=6, column=0, sticky="w", pady=5)
+        entry_resolution_date = ttk.Entry(frame)
+        entry_resolution_date.grid(row=6, column=1, pady=5, sticky="ew")
+        
+        ttk.Button(form, text="Сохранить", command=lambda: print("Сохранение неполадки")).pack(pady=10)
+        form.mainloop()
+
+
+    # Форма для добавления продажи
+    def show_add_sale_form(self):
+        form = Toplevel(self.root)
+        form.title("Добавление продажи")
+        form.geometry("400x350")
+        
+        frame = ttk.Frame(form)
+        frame.pack(padx=10, pady=10, fill="x")
+        
+        ttk.Label(frame, text="ID автомата (Vendor_usage):").grid(row=0, column=0, sticky="w", pady=5)
+        entry_vendor_usage = ttk.Entry(frame)
+        entry_vendor_usage.grid(row=0, column=1, pady=5, sticky="ew")
+        
+        ttk.Label(frame, text="ID лампы:").grid(row=1, column=0, sticky="w", pady=5)
+        entry_lamp = ttk.Entry(frame)
+        entry_lamp.grid(row=1, column=1, pady=5, sticky="ew")
+        
+        ttk.Label(frame, text="Цена:").grid(row=2, column=0, sticky="w", pady=5)
+        entry_price = ttk.Entry(frame)
+        entry_price.grid(row=2, column=1, pady=5, sticky="ew")
+        
+        ttk.Label(frame, text="Дата (ГГГГ-ММ-ДД):").grid(row=3, column=0, sticky="w", pady=5)
+        entry_date = ttk.Entry(frame)
+        entry_date.grid(row=3, column=1, pady=5, sticky="ew")
+        
+        ttk.Button(form, text="Сохранить", command=lambda: print("Сохранение продажи")).pack(pady=10)
+        form.mainloop()
+
+
+    def add_lamp_refill_row(self, tree):
+        # Открываем небольшое окно для ввода одной строки для Lamp_Refills
+        row_win = Toplevel(self.root)
+        row_win.title("Добавить строку")
+        row_win.geometry("300x200")
+        
+        ttk.Label(row_win, text="ID лампы:").pack(pady=5)
+        entry_id_lamp = ttk.Entry(row_win)
+        entry_id_lamp.pack(pady=5)
+        
+        ttk.Label(row_win, text="Количество:").pack(pady=5)
+        entry_quantity = ttk.Entry(row_win)
+        entry_quantity.pack(pady=5)
+        
+        ttk.Label(row_win, text="Цена:").pack(pady=5)
+        entry_price = ttk.Entry(row_win)
+        entry_price.pack(pady=5)
+        
+        def add_row():
+            row_values = (entry_id_lamp.get(), entry_quantity.get(), entry_price.get())
+            tree.insert("", END, values=row_values)
+            row_win.destroy()
+            
+        ttk.Button(row_win, text="Добавить", command=add_row).pack(pady=10)
+
+        
+            
     def create_tab(self, title, columns, data):
         """
         columns - список кортежей вида (Заголовок, имя_свойства)
@@ -344,5 +676,6 @@ class MainApp:
 if __name__ == "__main__":
     root = Tk()
     root.resizable(0, 0)
+    root.iconbitmap("vendor.ico")
     app = MainApp(root)
     root.mainloop()

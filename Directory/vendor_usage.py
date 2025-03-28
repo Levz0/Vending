@@ -18,5 +18,5 @@ class Vendor_usage():
             raise ValueError(f"Status must be one of {allowed_statuses}")
         self._status = value
         
-    def __str__():
-        return self.vendor
+    def __str__(self):
+        return self.code + " " + self.vendor + " " + self.location + " "

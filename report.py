@@ -71,11 +71,11 @@ class ReportsWindow:
                 period_frame.grid(row=row, column=0, pady=5)
                 lbl_start = ttk.Label(period_frame, text="Период: с")
                 lbl_start.pack(side="left", padx=5)
-                entry_start = DateEntry(period_frame, width=12, date_pattern="yyyy-mm-dd")
+                entry_start = DateEntry(period_frame, width=12, date_pattern="dd-mm-yyyy")
                 entry_start.pack(side="left", padx=5)
                 lbl_to = ttk.Label(period_frame, text="по")
                 lbl_to.pack(side="left", padx=5)
-                entry_end = DateEntry(period_frame, width=12, date_pattern="yyyy-mm-dd")
+                entry_end = DateEntry(period_frame, width=12, date_pattern="dd-mm-yyyy")
                 entry_end.pack(side="left", padx=5)
                 self.tabs[title]["entry_start"] = entry_start
                 self.tabs[title]["entry_end"] = entry_end
