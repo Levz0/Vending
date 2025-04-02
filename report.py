@@ -71,11 +71,11 @@ class ReportsWindow:
                 period_frame.grid(row=row, column=0, pady=5)
                 lbl_start = ttk.Label(period_frame, text="Период: с")
                 lbl_start.pack(side="left", padx=5)
-                entry_start = DateEntry(period_frame, width=12, date_pattern="dd-mm-yyyy")
+                entry_start = DateEntry(period_frame, width=12, date_pattern="yyyy-mm-dd")
                 entry_start.pack(side="left", padx=5)
                 lbl_to = ttk.Label(period_frame, text="по")
                 lbl_to.pack(side="left", padx=5)
-                entry_end = DateEntry(period_frame, width=12, date_pattern="dd-mm-yyyy")
+                entry_end = DateEntry(period_frame, width=12, date_pattern="yyyy-mm-dd")
                 entry_end.pack(side="left", padx=5)
                 self.tabs[title]["entry_start"] = entry_start
                 self.tabs[title]["entry_end"] = entry_end
@@ -108,7 +108,7 @@ class ReportsWindow:
         lbl_period.pack(anchor="n", pady=5)
         
         # Таблица с колонками: аппарат, дата поломки, дата починки, причина возникновения
-        columns = ("аппарат", "адрес", "дата поломки", "дата починки", "причина возникновения")
+        columns = ("номер аппарата", "аппарат", "тип неполадки", "дата возникновния", "дата ремонта", "причина возникновения")
         tree = ttk.Treeview(container, columns=columns, show="headings")
         for col in columns:
             tree.heading(col, text=col)
@@ -117,13 +117,15 @@ class ReportsWindow:
         
         # Выполняем SQL-запрос для получения данных отчета по неполадкам
         query = f"""
-        SELECT v.Name as аппарат, l.Address as Адрес, m.report_date, m.resolution_date, m.Reason
+        SELECT vu.id as код, CONCAT(v.Name, l.Address) as аппарат, mt.Name as `тип неполадки`, m.report_date, m.resolution_date, m.Reason
         FROM Malfunctions m
         JOIN Vendor_usage vu ON m.id_vendor_usage = vu.id
         JOIN Vendors v ON vu.id_vendor = v.id
         JOIN location l ON vu.id_location = l.id
+        JOIN Malfunction_Type mt ON m.id_malfunctiontype = mt.id
         WHERE m.report_date BETWEEN '{start_date}' AND '{end_date}'
         """
+
         self.db.cursor.execute(query)
         results = self.db.cursor.fetchall()
         for row in results:
