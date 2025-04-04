@@ -1,7 +1,5 @@
 import pymysql
 
-
-
 class DataBase:
     def __init__(self, host, user, password, database):
         self.host = host
