@@ -1,5 +1,5 @@
 # report.py
-from tkinter import Toplevel, BOTH, END, W
+from tkinter import Toplevel, BOTH, END, W, font
 from tkinter import ttk
 from tkcalendar import DateEntry  # Виджет выбора даты
 from datetime import datetime
@@ -27,7 +27,6 @@ class ReportsWindow:
         self.tabs = {}
         
         # Каждый элемент: (название вкладки, функция формирования отчета, требуется ли выбор периода)
-        # Период требуется только для отчетов "Отчет о неполадках..." и "Отчет по заправкам..."
         reports = [
             ("Отчет о неполадках\nаппаратов за период", self.generate_malfunctions_report, True),
             ("Отчет по реализованным лампам\nза период в разрезе автоматов", self.generate_sales_report, True),
@@ -71,11 +70,11 @@ class ReportsWindow:
                 period_frame.grid(row=row, column=0, pady=5)
                 lbl_start = ttk.Label(period_frame, text="Период: с")
                 lbl_start.pack(side="left", padx=5)
-                entry_start = DateEntry(period_frame, width=12, date_pattern="dd-mm-yyyy")
+                entry_start = DateEntry(period_frame, width=12, date_pattern="yyyy-mm-dd")
                 entry_start.pack(side="left", padx=5)
                 lbl_to = ttk.Label(period_frame, text="по")
                 lbl_to.pack(side="left", padx=5)
-                entry_end = DateEntry(period_frame, width=12, date_pattern="dd-mm-yyyy")
+                entry_end = DateEntry(period_frame, width=12, date_pattern="yyyy-mm-dd")
                 entry_end.pack(side="left", padx=5)
                 self.tabs[title]["entry_start"] = entry_start
                 self.tabs[title]["entry_end"] = entry_end
@@ -94,7 +93,17 @@ class ReportsWindow:
             container.grid(row=row, column=0, sticky="nsew", padx=10, pady=10)
             frame.rowconfigure(row, weight=1)
             self.tabs[title]["container"] = container
-    
+
+    def auto_adjust_columns(self, tree):
+        default_font = font.nametofont("TkDefaultFont")
+        for col in tree["columns"]:
+            max_width = default_font.measure(tree.heading(col)["text"])
+            for item in tree.get_children():
+                cell_text = tree.set(item, col)
+                max_width = max(max_width, default_font.measure(cell_text))
+            tree.column(col, width=max_width + 10, stretch=True)
+
+
     def clear_container(self, container):
         for widget in container.winfo_children():
             widget.destroy()
@@ -107,66 +116,98 @@ class ReportsWindow:
         lbl_period = ttk.Label(container, text=f"с {start_date} по {end_date}", font=("Segoe UI", 12))
         lbl_period.pack(anchor="n", pady=5)
         
-        # Таблица с колонками: аппарат, дата поломки, дата починки, причина возникновения
-        columns = ("аппарат", "адрес", "дата поломки", "дата починки", "причина возникновения")
+        # Таблица с колонками: код аппарата, id сотрудника, аппарат, тип неполадки, дата возникновния, дата ремонта, причина возникновения
+        columns = ("код", "сотрудник", "аппарат", "тип неполадки", "дата возникновния", "дата ремонта", "причина возникновения")
         tree = ttk.Treeview(container, columns=columns, show="headings")
         for col in columns:
             tree.heading(col, text=col)
-            tree.column(col, width=150, anchor="center")
+            # Убираем фиксированную ширину, оставляя возможность растягивания
+            tree.column(col, anchor="center", stretch=True)
         tree.pack(fill=BOTH, expand=True, pady=5)
         
-        # Выполняем SQL-запрос для получения данных отчета по неполадкам
+        # Запрос с добавленным полем m.id_employee
         query = f"""
-        SELECT v.Name as аппарат, l.Address as Адрес, m.report_date, m.resolution_date, m.Reason
+        SELECT vu.id as код, e.FIO, CONCAT(v.Name, l.Address) as аппарат, 
+               mt.Name as `тип неполадки`, m.report_date, m.resolution_date, m.Reason
         FROM Malfunctions m
-        JOIN Vendor_usage vu ON m.id_vendor_usage = vu.id
-        JOIN Vendors v ON vu.id_vendor = v.id
-        JOIN location l ON vu.id_location = l.id
+        Left JOIN Vendor_usage vu ON m.id_vendor_usage = vu.id
+        Left JOIN Vendors v ON vu.id_vendor = v.id
+        Left JOIN location l ON vu.id_location = l.id
+        Left JOIN Malfunction_Type mt ON m.id_malfunctiontype = mt.id
+        Left JOIN Employee e ON m.id_employee = e.id
         WHERE m.report_date BETWEEN '{start_date}' AND '{end_date}'
+        Order by m.report_date DESC
         """
         self.db.cursor.execute(query)
         results = self.db.cursor.fetchall()
         for row in results:
             row = list(row)
-            if row[3] is None:
-                row[3] = "-"
-            tree.insert("", END, values=row)
+            cleaned_row = ["-" if item is None else item for item in row]
+            tree.insert("", END, values=cleaned_row)
+        
+        # Автоматически подгоняем ширину столбцов
+        self.auto_adjust_columns(tree)
     
     def generate_sales_report(self, start_date, end_date):
         title = "Отчет по реализованным лампам\nза период в разрезе автоматов"
         container = self.tabs[title]["container"]
         self.clear_container(container)
-        
-        # Этот отчет не требует выбора периода, поэтому просто формируем заголовок
+
         lbl_info = ttk.Label(container, text="Отчет по реализованным лампам за период в разрезе автоматов", font=("Segoe UI", 12))
         lbl_info.pack(anchor="n", pady=5)
-        
-        # Таблица с колонками: аппарат, лампа, цена, количество, выручка
-        columns = ("аппарат", "лампа", "цена", "количество", "выручка")
-        tree = ttk.Treeview(container, columns=columns, show="headings")
+
+        # Первый столбец (#0) – для иерархии (здесь будет объединён код и название аппарата)
+        columns = ("тип лампы", "лампа", "цена", "количество", "выручка")
+        tree = ttk.Treeview(container, columns=columns, show="tree headings")
+        tree.heading("#0", text="Аппарат (код и название)")
         for col in columns:
             tree.heading(col, text=col)
-            tree.column(col, width=120, anchor="center")
+            tree.column(col, anchor="center", stretch=True)
         tree.pack(fill=BOTH, expand=True, pady=5)
-        
-        # Запрос для отчета по продажам
+
         query = f"""
-        SELECT v.Name as аппарат, l.Name as лампа, s.price as цена, COUNT(*) as количество, SUM(s.price) as выручка
+        SELECT CONCAT('Аппарат № ', vu.id), CONCAT(v.Name, ' ', loc.Name) as аппарат, lt.Name as `тип лампы`, l.Name as лампа, s.price as цена, 
+            COUNT(*) as количество, SUM(s.price) as выручка
         FROM Sale s
         JOIN Vendor_usage vu ON s.id_vendor_usage = vu.id
         JOIN Vendors v ON vu.id_vendor = v.id
         JOIN Lamps l ON s.id_lamp = l.id
+        JOIN Lamp_Type lt ON l.id_type = lt.id
+        JOIN Location loc ON vu.id_location = loc.id
         WHERE s.date BETWEEN '{start_date}' AND '{end_date}'
         GROUP BY v.Name, l.Name, s.price
         """
         self.db.cursor.execute(query)
         results = self.db.cursor.fetchall()
-        total = 0
+
+        # Группируем по названию аппарата, сохраняя код аппарата из первой записи
+        grouped_data = {}
         for row in results:
-            tree.insert("", END, values=row)
-            total += row[4]
+            vendor_code = row[0]      # Код аппарата
+            vendor_name = row[1]      # Название аппарата
+            if vendor_name not in grouped_data:
+                grouped_data[vendor_name] = {"code": vendor_code, "rows": []}
+            grouped_data[vendor_name]["rows"].append(row)
+
+        total = 0
+        for vendor_name, data in grouped_data.items():
+            # Родительский узел: объединяем код и название аппарата
+            parent_text = f"{data['code']} {vendor_name}"
+            parent_id = tree.insert("", END, text=parent_text, values=("", "", "", "", ""))
+            tree.item(parent_id, open=True)  # Узел сразу раскрыт
+
+            for row in data["rows"]:
+                # В дочерних узлах первый столбец оставляем пустым, остальные – данные по лампе
+                tree.insert(parent_id, END, text="",
+                            values=(row[2], row[3], row[4], row[5], row[6]))
+                total += row[6]
+
         lbl_total = ttk.Label(container, text=f"Итого: {total:.2f}", font=("Segoe UI", 12, "bold"))
         lbl_total.pack(anchor="e", pady=5)
+
+        self.auto_adjust_columns(tree)
+
+
     
     def generate_refills_report(self, start_date, end_date):
         title = "Отчет по заправкам\nаппаратов за период"
@@ -176,27 +217,73 @@ class ReportsWindow:
         lbl_period = ttk.Label(container, text=f"с {start_date} по {end_date}", font=("Segoe UI", 12))
         lbl_period.pack(anchor="n", pady=5)
         
-        # Таблица с колонками: аппарат, лампа, ед. цена, количество, сумма
-        columns = ("аппарат", "лампа", "ед. цена", "количество", "сумма")
-        tree = ttk.Treeview(container, columns=columns, show="headings")
+        # Определяем столбцы: первая колонка (#0) будет для аппарата, остальные — для данных заправки и ламп
+        columns = ("инфо заправки", "лампа", "ед. цена", "количество", "сумма")
+        tree = ttk.Treeview(container, columns=columns, show="tree headings")
+        tree.heading("#0", text="аппарат (номер, имя, адрес)")
+        tree.column("#0", anchor="w", width=250)
         for col in columns:
             tree.heading(col, text=col)
-            tree.column(col, width=120, anchor="center")
+            tree.column(col, anchor="center", stretch=True)
         tree.pack(fill=BOTH, expand=True, pady=5)
         
         query = f"""
-        SELECT v.Name as аппарат, l.Name as лампа, lr.price as `ед_цена`, lr.quantity as количество, (lr.price * lr.quantity) as сумма
+        SELECT 
+            vu.id AS vendor_usage_id,
+            CONCAT(v.Name, ' ', loc.Name) AS apparatus_info,
+            r.id AS refill_id,
+            r.date AS refill_date,
+            e.FIO AS employee,
+            l.Name AS lamp,
+            lr.price AS unit_price,
+            lr.quantity AS quantity,
+            (lr.price * lr.quantity) AS sum_total
         FROM Refill r
         JOIN Lamps_Refills lr ON r.id = lr.id_refill
         JOIN Vendor_usage vu ON r.id_vendor_usage = vu.id
         JOIN Vendors v ON vu.id_vendor = v.id
+        JOIN Location loc ON vu.id_location = loc.id
+        JOIN Employee e ON r.id_employee = e.id
         JOIN Lamps l ON lr.id_lamp = l.id
         WHERE r.date BETWEEN '{start_date}' AND '{end_date}'
+        ORDER BY vu.id, r.date, r.id, l.Name
         """
         self.db.cursor.execute(query)
         results = self.db.cursor.fetchall()
+        
+        current_app = None
+        app_node = ""
+        
         for row in results:
-            tree.insert("", END, values=row)
+            vendor_usage_id = row[0]
+            apparatus_info = row[1]
+            refill_id = row[2]
+            refill_date = row[3]
+            employee = row[4]
+            lamp = row[5]
+            unit_price = row[6]
+            quantity = row[7]
+            sum_total = row[8]
+            
+            # Если сменился аппарат, создаем новый родительский узел
+            if vendor_usage_id != current_app:
+                app_text = f"№ {vendor_usage_id} {apparatus_info}"
+                app_node = tree.insert("", END, text=app_text, values=("", "", "", "", ""))
+                tree.item(app_node, open=True)
+                current_app = vendor_usage_id
+            
+            # Форматируем данные заправки, чтобы вывести их в отдельном столбце
+            formatted_date = refill_date.strftime("%d.%m.%Y") if hasattr(refill_date, "strftime") else refill_date
+            refill_text = f"№ {refill_id} от {formatted_date} ({employee})"
+            
+            # Добавляем строку с данными по лампе, при этом заправка – часть данных, а не отдельный узел
+            tree.insert(app_node, END, text="", values=(refill_text, lamp, unit_price, quantity, sum_total))
+        
+        self.auto_adjust_columns(tree)
+
+
+
+
     
     def generate_lamps_report(self, start_date, end_date):
         title = "Проданные типы ламп\nпо аппаратам"
@@ -206,24 +293,52 @@ class ReportsWindow:
         lbl_period = ttk.Label(container, text=f"с {start_date} по {end_date}", font=("Segoe UI", 12))
         lbl_period.pack(anchor="n", pady=5)
         
-        # Таблица с колонками: аппарат, тип лампы, выручка
-        columns = ("аппарат", "тип лампы", "выручка")
-        tree = ttk.Treeview(container, columns=columns, show="headings")
+        columns = ("тип лампы", "количество", "выручка")
+        tree = ttk.Treeview(container, columns=columns, show="tree headings")
+        tree.heading("#0", text="аппарат (номер, имя, адрес)")
+        tree.column("#0", anchor="w", width=200)
         for col in columns:
             tree.heading(col, text=col)
-            tree.column(col, width=150, anchor="center")
+            tree.column(col, anchor="center", stretch=True)
         tree.pack(fill=BOTH, expand=True, pady=5)
         
         query = f"""
-        SELECT v.Name as аппарат, lt.Name as `тип лампы`, SUM(s.price) as выручка
+        SELECT 
+            vu.id,
+            CONCAT("Аппарат № ", vu.id, " ", v.Name , " ", loc.Name) as аппарат, 
+            lt.Name as `тип лампы`, 
+            Count(*) as количество,
+            SUM(s.price) as выручка
         FROM Sale s
         JOIN Vendor_usage vu ON s.id_vendor_usage = vu.id
         JOIN Vendors v ON vu.id_vendor = v.id
         JOIN Lamps l ON s.id_lamp = l.id
         JOIN Lamp_Type lt ON l.id_type = lt.id
-        GROUP BY v.Name, lt.Name
+        JOIN Location loc ON vu.id_location = loc.id
+        GROUP BY аппарат, lt.Name
         """
         self.db.cursor.execute(query)
         results = self.db.cursor.fetchall()
+        
+        grouped_data = {}
         for row in results:
-            tree.insert("", END, values=row)
+            vendor_usage_id = row[0]
+            apparatus = row[1]
+            lamp_type = row[2]
+            quantity = row[3]
+            revenue = row[4]
+            if vendor_usage_id not in grouped_data:
+                grouped_data[vendor_usage_id] = {
+                    "apparatus": apparatus,
+                    "details": []
+                }
+            grouped_data[vendor_usage_id]["details"].append((lamp_type, quantity, revenue))
+            
+        for vendor_usage_id, data in grouped_data.items():
+            parent_id = tree.insert("", END, text=data["apparatus"], values=("", "", ""))
+            tree.item(parent_id, open=True)
+            for detail in data["details"]:
+                lamp_type, quantity, revenue = detail
+                tree.insert(parent_id, END, text="", values=(lamp_type, quantity, revenue))
+        
+        self.auto_adjust_columns(tree)

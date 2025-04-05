@@ -322,7 +322,7 @@ class MainApp:
                 ttk.Button(control_frame, 
                         text=action, 
                    style="Primary.TButton").pack(side=LEFT, padx=5)
-
+        ttk.Button(control_frame, text="Отчеты", style="Primary.TButton", command=self.open_reports_window).pack(side=LEFT, padx=5)
     import tkinter.font as tkFont
 
     def open_add_form(self, current_tab_index):
@@ -352,13 +352,13 @@ class MainApp:
         form.geometry("430x350")
         frame = ttk.Frame(form)
         frame.grid(padx=10, pady=10)  # Используем grid() вместо pack()
-
+    
         ttk.Label(frame, text="Модель аппарата").grid(row=0, column=0, sticky="w", pady=5)
         entry_vendor = ttk.Combobox(frame, state="readonly", values=[vendor.name for vendor in self.vendors])
         entry_vendor.grid(row=0, column=1, pady=5, sticky="ew")
 
         ttk.Label(frame, text="Дата установки (ГГГГ-ММ-ДД):").grid(row=1, column=0, sticky="w", pady=5)
-        entry_install_date = DateEntry(frame, 
+        entry_install_date = DateEntry(frame,
                                        date_pattern = 'dd-MM-yyyy',
                                        locale = 'ru_RU', state = "readonly", maxdate = datetime.now())
         entry_install_date.grid(row=1, column=1, pady=5, sticky="ew") 
@@ -547,7 +547,7 @@ class MainApp:
         entry_report_date = ttk.Entry(frame)
         entry_report_date.grid(row=5, column=1, pady=5, sticky="ew")
         
-        ttk.Label(frame, text="Дата починки (ГГГГ-ММ-ДД, опционально):").grid(row=6, column=0, sticky="w", pady=5)
+        ttk.Label(frame, text="Дата ремонта (ГГГГ-ММ-ДД, опционально):").grid(row=6, column=0, sticky="w", pady=5)
         entry_resolution_date = ttk.Entry(frame)
         entry_resolution_date.grid(row=6, column=1, pady=5, sticky="ew")
         
