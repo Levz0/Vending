@@ -1,7 +1,5 @@
 import pymysql
 
-
-
 class DataBase:
     def __init__(self, host, user, password, database):
         self.host = host
@@ -24,6 +22,6 @@ class DataBase:
             print(f"Ошибка подключения: {err}")
             
     def closeConnection(self):
-        if connection.open:
-            connection.close()
-            print("Соединение закрыто.")
+        if self.connection.open:
+           self.connection.close()
+           print("Соединение закрыто.")
