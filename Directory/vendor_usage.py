@@ -1,7 +1,8 @@
+from Directory.vendor import Vendor
 class Vendor_usage():
     def __init__(self, code, vendor, install_date, location, status):
         self.code = code
-        self.vendor = vendor
+        self.vendor = Vendor(vendor.code, vendor.name, vendor.description)
         self.install_date = install_date    
         self.location = location
         self.status = status
@@ -19,4 +20,4 @@ class Vendor_usage():
         self._status = value
         
     def __str__(self):
-        return self.code + " " + self.vendor + " " + self.location + " "
+        return "Аппарат № " + str(self.code) + " " + str(self.vendor) + " " + str(self.location) + " "
