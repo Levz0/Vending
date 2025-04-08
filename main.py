@@ -1,9 +1,12 @@
 from tkinter import ttk, Tk
+from tkinter.messagebox import showerror, showwarning, showinfo
 import tkinter.font as tkFont
 from tkinter import *
 import random
-from datetime import datetime, timedelta
+from datetime import datetime, time
 from tkcalendar import DateEntry
+
+
 import os
 import sys
 
@@ -177,11 +180,9 @@ class MainApp:
             self.db.cursor.execute(f"SELECT * from Employee WHERE id = {refill[1] }")   
             employee = self.db.cursor.fetchone()
             employee = Employee(employee[0], employee[1], employee[2], employee[3], employee[4], employee[5], employee[6], employee[7])
-            self.db.cursor.execute(f"Select * from Vendors where id = (Select id_vendor from Vendor_usage where id = {refill[2]})")   
-            vendor = self.db.cursor.fetchone()
-            vendor = Vendor(vendor[0], vendor[1], vendor[2])    
+            vendor_usage = next((vu for vu in self.vendor_usages if vu.code == refill[2]), None)
             date = refill[3]
-            self.refills.append(Refill(code, employee, vendor, date))
+            self.refills.append(Refill(code, employee, vendor_usage, date))
             
         # Получение данных неполадок  
         self.malfunctions = []
@@ -213,7 +214,7 @@ class MainApp:
                 resolution_date = "-"
             self.malfunctions.append(Malfunction(code, malfunction_type, vendor_usage, employee, status, reason, report_date, resolution_date))
 
-             # Получение данных продаж
+        # Получение данных продаж
         self.sales = []
         self.db.cursor.execute("SELECT * FROM Sale")
         result = self.db.cursor.fetchall()
@@ -242,7 +243,7 @@ class MainApp:
         # Вкладка "Аппараты" (на основе Vendor_usage)
         apparatus_columns = [
             ("Код", "code"),
-            ("Вендор", "vendor"),
+            ("Аппарат", "vendor"),
             ("Дата установки", "install_date"),
             ("Локация", "location"),
             ("Статус", "status")
@@ -293,7 +294,7 @@ class MainApp:
             ("Аппарат", "vendor_usage"),
             ("Причина возникновения", "reason"),
             ("Дата возникновения", "report_date"),
-            ("Дата починки", "resolution_date")
+            ("Дата ремонта", "resolution_date")
         ]
         self.create_tab("Неполадки", malfunction_columns, self.malfunctions)
         
@@ -351,30 +352,75 @@ class MainApp:
         form.title("Добавление автомата (Vendor_usage)")
         form.geometry("430x350")
         frame = ttk.Frame(form)
-        frame.grid(padx=10, pady=10)  # Используем grid() вместо pack()
-    
+        frame.grid(padx=10, pady=10)
+        
+        # Выбор модели аппарата
         ttk.Label(frame, text="Модель аппарата").grid(row=0, column=0, sticky="w", pady=5)
         entry_vendor = ttk.Combobox(frame, state="readonly", values=[vendor.name for vendor in self.vendors])
         entry_vendor.grid(row=0, column=1, pady=5, sticky="ew")
-
+        
+        # Выбор даты установки. Указываем формат ГГГГ-ММ-ДД для соответствия формату в БД.
         ttk.Label(frame, text="Дата установки (ГГГГ-ММ-ДД):").grid(row=1, column=0, sticky="w", pady=5)
         entry_install_date = DateEntry(frame,
-                                       date_pattern = 'dd-MM-yyyy',
-                                       locale = 'ru_RU', state = "readonly", maxdate = datetime.now())
-        entry_install_date.grid(row=1, column=1, pady=5, sticky="ew") 
-
+                                    date_pattern='yyyy-MM-dd',
+                                    locale='ru_RU', state="readonly", maxdate=datetime.now())
+        entry_install_date.grid(row=1, column=1, pady=5, sticky="ew")
+        
+        # Выбор локации
         ttk.Label(frame, text="Локация:").grid(row=2, column=0, sticky="w", pady=5)
-        entry_location = ttk.Combobox(frame, state="readonly", values=[location.name for location in self.locations])
+        entry_location = ttk.Combobox(frame, state="readonly", values=[loc.name for loc in self.locations])
         entry_location.grid(row=2, column=1, pady=5, sticky="ew")
-
+        
+        # Выбор статуса
         ttk.Label(frame, text="Статус (Активен/Неактивен/В обслуживании):").grid(row=3, column=0, sticky="w", pady=5)
         entry_status = ttk.Combobox(frame, state="readonly", values=["Активен", "Неактивен", "В обслуживании"])
         entry_status.grid(row=3, column=1, pady=5, sticky="ew")
+        
+        def save_vendor_usage():
+            # Получаем выбранное имя аппарата
+            vendor_name = entry_vendor.get()
+            # Ищем объект Vendor по имени
+            selected_vendor = next((vendor for vendor in self.vendors if vendor.name == vendor_name), None)
+            if not selected_vendor:
+                print("Выберите корректную модель аппарата")
+                return
+            # Получаем дату установки
+            install_date = entry_install_date.get()  # формат: yyyy-mm-dd
+            # Получаем выбранное имя локации
+            location_name = entry_location.get()
+            # Ищем объект Location по имени
+            selected_location = next((loc for loc in self.locations if loc.name == location_name), None)
+            if not selected_location:
+                print("Выберите корректную локацию")
+                return
 
-        save_button = ttk.Button(frame, text="Сохранить", command=lambda: print("Сохранение автомата"))
+            # Получаем статус
+            status = entry_status.get()
+            
+            # Формируем SQL-запрос для вставки записи в таблицу Vendor_usage.
+            # Предполагается, что в таблице Vendor_usage столбцы:
+            # id_vendor, Install_date, id_location, Status.
+            query = (
+                f"INSERT INTO Vendor_usage (id_vendor, Install_date, id_location, Status) "
+                f"VALUES ({selected_vendor.code}, '{install_date}', {selected_location.code}, '{status}')"
+            )
+            try:
+                self.db.cursor.execute(query)
+                self.db.connection.commit()  # Фиксируем изменения в базе
+                print("Запись успешно добавлена")
+                self.fetch_data()
+                self.refresh_widgets()
+                self.notebook.select(self.vendor_tab)
+                showinfo("Добавление данных", f"Аппарат {vendor_name} в {location_name} добавлен успешно!")
+            except Exception as e:
+                print("Ошибка при добавлении:", e)
+            form.destroy()
+        
+        save_button = ttk.Button(frame, text="Сохранить", command=save_vendor_usage)
         save_button.grid(row=4, column=0, columnspan=2, pady=10)
-
+        
         form.mainloop()
+
 
 
 
@@ -423,8 +469,39 @@ class MainApp:
             padx=2, pady=2
         )
         
+        def save_lamp():
+            article = entry_article.get().strip()
+            name = entry_name.get().strip()
+            lamp_type_name = entry_type.get().strip()
+            selected_lamp_type = next((lt for lt in self.lamp_types if lt.name == lamp_type_name), None)
+            if not selected_lamp_type:
+                showerror("Ошибка", "Выберите корректный тип лампы")
+                return
+            try:
+                voltage = float(entry_voltage.get())
+                colorTemp = float(entry_colorTemp.get())
+                price = float(entry_price.get())
+            except ValueError:
+                showerror("Ошибка", "Введите числовые значения для напряжения, цветовой температуры и цены")
+                return
+            description = text_description.get("1.0", END).strip()
+            
+            query = (
+                "INSERT INTO Lamps (article, Name, Voltage, ColorTemp, Price, Description, id_type) "
+                f"VALUES ('{article}', '{name}', {voltage}, {colorTemp}, {price}, '{description}', {selected_lamp_type.code})"
+            )
+            try:
+                self.db.cursor.execute(query)
+                self.db.connection.commit()
+                showinfo("Успех", "Лампа успешно добавлена!")
+                self.fetch_data()
+                self.refresh_widgets()
+                self.notebook.select(self.lamp_tab)
+            except Exception as e:
+                showerror("Ошибка", f"Ошибка при добавлении лампы: {e}")
+            form.destroy()
                 
-        ttk.Button(form, text="Сохранить", command=lambda: print("Сохранение лампы")).pack(pady=10)
+        ttk.Button(form, text="Сохранить", command=save_lamp).pack(pady=10)
         form.mainloop()
 
 
@@ -447,7 +524,7 @@ class MainApp:
         
         ttk.Label(frame, text="Дата рождения:").grid(row=2, column=0, sticky="w", pady=5)
         entry_birth_date = DateEntry(frame, 
-                                       date_pattern = 'dd-MM-yyyy',
+                                       date_pattern = 'yyyy-MM-dd',
                                        locale = 'ru_RU', state = "readonly", maxdate = datetime.now())
         entry_birth_date.grid(row=2, column=1, pady=5, sticky="ew") 
         
@@ -467,7 +544,38 @@ class MainApp:
         entry_password = ttk.Entry(frame)
         entry_password.grid(row=6, column=1, pady=5, sticky="ew")
         
-        ttk.Button(form, text="Сохранить", command=lambda: print("Сохранение сотрудника")).pack(pady=10)
+        def save_employee():
+            FIO = entry_FIO.get().strip()
+            post_name = entry_post.get().strip()
+            # Ищем объект Post по строковому представлению
+            selected_post = next((post for post in self.posts if str(post) == post_name), None)
+            if not selected_post:
+                print("Выберите корректную должность")
+                return
+            birth_date = entry_birth_date.get()  # в формате yyyy-MM-dd
+            INN = entry_INN.get().strip()
+            phone = entry_phone.get().strip()
+            login = entry_login.get().strip()
+            password = entry_password.get().strip()
+            
+            # Формируем SQL-запрос. Предполагается, что поле id (TAB) автоинкрементное.
+            query = (
+                "INSERT INTO Employee (FIO, id_post, BirthDate, INN, phoneNumber, login, password) "
+                f"VALUES ('{FIO}', {selected_post.code}, '{birth_date}', '{INN}', '{phone}', '{login}', '{password}')"
+            )
+            try:
+                self.db.cursor.execute(query)
+                self.db.connection.commit()
+                print("Сотрудник успешно добавлен")
+                self.fetch_data()        # обновляем данные в памяти
+                self.refresh_widgets()   # пересоздаем интерфейс
+                self.notebook.select(self.employee_tab)
+            except Exception as e:
+                print("Ошибка при добавлении сотрудника:", e)
+            form.destroy()
+            
+        ttk.Button(frame, text="Сохранить", command=save_employee).grid(row=7, column=0, columnspan=2, pady=10)
+
         form.mainloop()
 
 
@@ -475,13 +583,13 @@ class MainApp:
     def show_add_refill_form(self):
         form = Toplevel(self.root)
         form.title("Добавление заправки")
-        form.geometry("500x500")
+        form.geometry("500x700")
         
         frame = ttk.Frame(form)
         frame.pack(padx=10, pady=10, fill="x")
         
         ttk.Label(frame, text="Сотрудник:").grid(row=0, column=0, sticky="w", pady=5)
-        entry_employee = ttk.Entry(frame)
+        entry_employee = ttk.Combobox(frame, values=[employee for employee in self.employees], width=50)
         entry_employee.grid(row=0, column=1, pady=5, sticky="ew")
         
         ttk.Label(frame, text="Аппарат:").grid(row=1, column=0, sticky="w", pady=5)
@@ -489,7 +597,9 @@ class MainApp:
         entry_vendor_usage.grid(row=1, column=1, pady=5, sticky="ew")
         
         ttk.Label(frame, text="Дата (ГГГГ-ММ-ДД):").grid(row=2, column=0, sticky="w", pady=5)
-        entry_date = ttk.Entry(frame)
+        entry_date = DateEntry(frame,
+                        date_pattern='yyyy-MM-dd ',
+                        locale='ru_RU', state="readonly", maxdate=datetime.now())
         entry_date.grid(row=2, column=1, pady=5, sticky="ew")
         
         # Табличная часть для Lamp_Refills
@@ -527,11 +637,11 @@ class MainApp:
         entry_type = ttk.Entry(frame)
         entry_type.grid(row=0, column=1, pady=5, sticky="ew")
         
-        ttk.Label(frame, text="ID автомата (Vendor_usage):").grid(row=1, column=0, sticky="w", pady=5)
+        ttk.Label(frame, text="Код аппарата:").grid(row=1, column=0, sticky="w", pady=5)
         entry_vendor_usage = ttk.Entry(frame)
         entry_vendor_usage.grid(row=1, column=1, pady=5, sticky="ew")
         
-        ttk.Label(frame, text="ID сотрудника (опционально):").grid(row=2, column=0, sticky="w", pady=5)
+        ttk.Label(frame, text="Таб.номер сотрудника (опционально):").grid(row=2, column=0, sticky="w", pady=5)
         entry_employee = ttk.Entry(frame)
         entry_employee.grid(row=2, column=1, pady=5, sticky="ew")
         
@@ -564,11 +674,11 @@ class MainApp:
         frame = ttk.Frame(form)
         frame.pack(padx=10, pady=10, fill="x")
         
-        ttk.Label(frame, text="ID автомата (Vendor_usage):").grid(row=0, column=0, sticky="w", pady=5)
+        ttk.Label(frame, text="Код аппарата (Vendor_usage):").grid(row=0, column=0, sticky="w", pady=5)
         entry_vendor_usage = ttk.Entry(frame)
         entry_vendor_usage.grid(row=0, column=1, pady=5, sticky="ew")
         
-        ttk.Label(frame, text="ID лампы:").grid(row=1, column=0, sticky="w", pady=5)
+        ttk.Label(frame, text="Код лампы:").grid(row=1, column=0, sticky="w", pady=5)
         entry_lamp = ttk.Entry(frame)
         entry_lamp.grid(row=1, column=1, pady=5, sticky="ew")
         
@@ -588,9 +698,9 @@ class MainApp:
         # Открываем небольшое окно для ввода одной строки для Lamp_Refills
         row_win = Toplevel(self.root)
         row_win.title("Добавить строку")
-        row_win.geometry("300x200")
+        row_win.geometry("300x300")
         
-        ttk.Label(row_win, text="ID лампы:").pack(pady=5)
+        ttk.Label(row_win, text="Код лампы:").pack(pady=5)
         entry_id_lamp = ttk.Entry(row_win)
         entry_id_lamp.pack(pady=5)
         
@@ -609,7 +719,13 @@ class MainApp:
             
         ttk.Button(row_win, text="Добавить", command=add_row).pack(pady=10)
 
-        
+    def refresh_widgets(self):
+        # Удаляем все виджеты из главного окна
+        for widget in self.root.winfo_children():
+            widget.destroy()
+        # Пересоздаём виджеты
+        self.create_widgets()
+   
             
     def create_tab(self, title, columns, data):
         """
@@ -618,6 +734,21 @@ class MainApp:
         """
         frame = ttk.Frame(self.notebook)
         self.notebook.add(frame, text=title)
+        match(title):
+            case "Аппараты":
+                self.vendor_tab = frame
+            case "Лампы":
+                self.lamp_tab = frame
+            case "Сотрудники":
+                self.employee_tab = frame
+            case "Заправки":
+                self.refill_tab = frame
+            case "Неполадки":
+                self.malfunction_tab = frame
+            case "Продажи":
+                self.sale_tab = frame
+            
+        
         
         # Фрейм для таблицы и скроллбаров
         tree_frame = ttk.Frame(frame)
