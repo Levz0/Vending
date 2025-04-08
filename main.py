@@ -1,4 +1,4 @@
-from tkinter import ttk, Tk
+from tkinter import ttk, Tk, Entry, StringVar
 from tkinter.messagebox import showerror, showwarning, showinfo
 import tkinter.font as tkFont
 from tkinter import *
@@ -80,6 +80,8 @@ class MainApp:
                        background="#ffffff",
                        fieldbackground="#ffffff")
 
+    def is_valid_number(value):
+        return value.isdigit() or value == ""
     def fetch_data(self):
         self.db.connect()
         
@@ -583,7 +585,7 @@ class MainApp:
     def show_add_refill_form(self):
         form = Toplevel(self.root)
         form.title("Добавление заправки")
-        form.geometry("500x700")
+        form.geometry("600x700")
         
         frame = ttk.Frame(form)
         frame.pack(padx=10, pady=10, fill="x")
@@ -603,11 +605,11 @@ class MainApp:
         entry_date.grid(row=2, column=1, pady=5, sticky="ew")
         
         # Табличная часть для Lamp_Refills
-        ttk.Label(form, text="Табличная часть: данные для Lamp_Refills", font=("Segoe UI", 10, "bold")).pack(pady=5)
+        ttk.Label(form, text="Список ламп", font=("Segoe UI", 10, "bold")).pack(pady=5)
         table_frame = ttk.Frame(form)
         table_frame.pack(fill="both", expand=True, padx=10, pady=5)
         
-        columns = ("id_lamp", "quantity", "price")
+        columns = ("Код лампы", "Артикул", "Наименование","Количество", "Цена")
         tree = ttk.Treeview(table_frame, columns=columns, show="headings")
         for col in columns:
             tree.heading(col, text=col)
@@ -619,8 +621,58 @@ class MainApp:
         vsb.pack(side="right", fill="y")
         
         ttk.Button(form, text="Добавить строку в табличную часть", command=lambda: self.add_lamp_refill_row(tree)).pack(pady=5)
+        def save_refill():
+            # Получение основных данных
+            emp_str = entry_employee.get().strip()
+            vendor_usage_str = entry_vendor_usage.get()
+            date_str = entry_date.get().strip()
+            
+            # Поиск соответствующих объектов по строковому представлению (так как в Combobox передаются строки)
+            selected_employee = next((emp for emp in self.employees if str(emp) == emp_str), None)
+            if not selected_employee:
+                showwarning("Внимание", "Выберите корректного сотрудника!")
+                return
+            selected_vendor_usage = next((vu for vu in self.vendor_usages if str(vu) == vendor_usage_str), None)
+            if not selected_vendor_usage:
+                showwarning("Внимание", "Выберите корректный аппарат!")
+                return
+            
+            # Формирование SQL-запроса для вставки в таблицу Refill
+            query_refill = (
+                "INSERT INTO Refill (id_employee, id_vendor_usage, date) "
+                f"VALUES ({selected_employee.TAB}, {selected_vendor_usage.code}, '{date_str}')"
+            )
+            try:
+                self.db.cursor.execute(query_refill)
+                self.db.connection.commit()
+                # Получаем ID последней вставленной записи (если используется автоинкремент)
+                refill_id = self.db.cursor.lastrowid
+                
+                # Обработка табличной части: перебор строк в treeview
+                for child in tree.get_children():
+                    row = tree.item(child)['values']
+                    # Предположим, что row имеет структуру:
+                    # (id_lamp, article, наименование, quantity, price)
+                    lamp_id = row[0]
+                    quantity = int(row[3])
+                    price = float(row[4])
+                    # Формируем запрос вставки для таблицы Lamps_Refills
+                    query_lamp = (
+                        "INSERT INTO Lamps_Refills (id_refill, id_lamp, quantity, price) "
+                        f"VALUES ({refill_id}, {lamp_id}, {quantity}, {price})"
+                    )
+                    self.db.cursor.execute(query_lamp)
+                self.db.connection.commit()
+                showinfo("Успех", "Заправка и данные по лампам успешно добавлены!")
+                self.fetch_data()
+                self.refresh_widgets()
+                # При необходимости можно перейти на вкладку "Заправки"
+                self.notebook.select(self.refill_tab)
+            except Exception as e:
+                showerror("Ошибка", f"Ошибка при добавлении заправки: {e}")
         
-        ttk.Button(form, text="Сохранить", command=lambda: print("Сохранение заправки с табличной частью")).pack(pady=10)
+            form.destroy()
+        ttk.Button(form, text="Сохранить", command=save_refill).pack(pady=10)
         form.mainloop()
 
 
@@ -697,23 +749,46 @@ class MainApp:
     def add_lamp_refill_row(self, tree):
         # Открываем небольшое окно для ввода одной строки для Lamp_Refills
         row_win = Toplevel(self.root)
-        row_win.title("Добавить строку")
+        row_win.title("Добавить лампу")
         row_win.geometry("300x300")
         
-        ttk.Label(row_win, text="Код лампы:").pack(pady=5)
-        entry_id_lamp = ttk.Entry(row_win)
+        ttk.Label(row_win, text="Лампа").pack(pady=5)
+        entry_id_lamp = ttk.Combobox(row_win, values=[lamp for lamp in self.lamps], width=30, state="readonly")
         entry_id_lamp.pack(pady=5)
         
         ttk.Label(row_win, text="Количество:").pack(pady=5)
-        entry_quantity = ttk.Entry(row_win)
+        entry_quantity = ttk.Entry(row_win, width=30)
         entry_quantity.pack(pady=5)
         
         ttk.Label(row_win, text="Цена:").pack(pady=5)
-        entry_price = ttk.Entry(row_win)
+        entry_price = ttk.Entry(row_win, width=30)
         entry_price.pack(pady=5)
         
+        article=""
+        code=0
+        # Обработчик выбора лампы в комбобоксе
+        def on_lamp_selected(event):
+            nonlocal article, code
+            # Получаем выбранное значение из комбобокса.
+            # Если значения — объекты Lamp, то entry_id_lamp.get() вернёт строковое представление,
+            # совпадающее с тем, что возвращает __str__.
+            selected_str = entry_id_lamp.get()
+            # Ищем лампу, у которой __str__ равен выбранной строке
+            for lamp in self.lamps:
+                if str(lamp) == selected_str:
+                    # Записываем цену выбранной лампы в поле entry_price.
+                    entry_price.delete(0, END)
+                    entry_price.insert(0, str(lamp.price))
+                    article=lamp.article
+                    code=lamp.code
+                    break
+
+        # Привязываем событие выбора к обработчику
+        entry_id_lamp.bind("<<ComboboxSelected>>", on_lamp_selected)
+        
+        
         def add_row():
-            row_values = (entry_id_lamp.get(), entry_quantity.get(), entry_price.get())
+            row_values = (code, article, entry_id_lamp.get(), entry_quantity.get(), entry_price.get())
             tree.insert("", END, values=row_values)
             row_win.destroy()
             
