@@ -978,7 +978,16 @@ class MainApp:
             lamp_type_name = entry_type.get().strip()
             selected_lamp_type = next((lt for lt in self.lamp_types if lt.name == lamp_type_name), None)
             if not selected_lamp_type:
-                showerror("Ошибка", "Выберите корректный тип лампы")
+                showerror("Ошибка!", "Выберите тип лампы!")
+                return
+            if entry_colorTemp.get() is "":
+                showerror("Ошибка!", "Введите цветовую температуру!")
+                return
+            if entry_price.get() is "":
+                showerror("Ошибка!", "Введите цену!")
+                return
+            if entry_voltage.get() is "":
+                showerror("Ошибка!", "Введите напряжение!")
                 return
             try:
                 voltage = float(entry_voltage.get())
@@ -1131,7 +1140,7 @@ class MainApp:
             # Поиск соответствующих объектов по строковому представлению (так как в Combobox передаются строки)
             selected_employee = next((emp for emp in self.employees if str(emp) == emp_str), None)
             if not selected_employee:
-                showwarning("Внимание", "Выберите корректного сотрудника!")
+                showwarning("Внимание", "Выберите сотрудника!")
                 return
             selected_vendor_usage = next((vu for vu in self.vendor_usages if str(vu) == vendor_usage_str), None)
             if not selected_vendor_usage:
@@ -1218,63 +1227,56 @@ class MainApp:
         ttk.Label(frame, text="Дата ремонта (ГГГГ-ММ-ДД, опционально):").grid(row=6, column=0, sticky="w", pady=5)
         entry_resolution_date = DateEntry(frame, state='readonly')
         entry_resolution_date.grid(row=6, column=1, pady=5, sticky="ew")
-        def save_refill():
-            # Получение основных данных
-            emp_str = entry_employee.get().strip()
+        def save_malfunction():
+            # Получение значений из полей формы
+            mal_type_str = entry_type.get()
             vendor_usage_str = entry_vendor_usage.get()
-            date_str = entry_date.get().strip()
-            
-            # Поиск соответствующих объектов по строковому представлению (так как в Combobox передаются строки)
-            selected_employee = next((emp for emp in self.employees if str(emp) == emp_str), None)
-            if not selected_employee:
-                showwarning("Внимание", "Выберите корректного сотрудника!")
+            employee_str = entry_employee.get()
+            status = entry_status.get()
+            reason = entry_reason.get()
+            report_date = entry_report_date.get_date()
+            resolution_date = entry_resolution_date.get_date()
+
+            # Поиск объектов по строковому представлению
+            selected_mal_type = next((mt for mt in self.malfunction_types if str(mt) == mal_type_str), None)
+            selected_vendor = next((vu for vu in self.vendor_usages if str(vu) == vendor_usage_str), None)
+            selected_employee = next((emp for emp in self.employees if str(emp) == employee_str), None)
+
+            if not selected_mal_type or not selected_vendor:
+                showwarning("Внимание", "Заполните обязательные поля: тип неполадки и аппарат.")
                 return
-            selected_vendor_usage = next((vu for vu in self.vendor_usages if str(vu) == vendor_usage_str), None)
-            if not selected_vendor_usage:
-                showwarning("Внимание", "Выберите корректный аппарат!")
+            if status == "":
+                showwarning("Ошибка!", "Не выбран статус неполадки!")
                 return
-            
-            # Формирование SQL-запроса для вставки в таблицу Refill
-            query_refill = (
-                "INSERT INTO Refill (id_employee, id_vendor_usage, date) "
-                f"VALUES ({selected_employee.TAB}, {selected_vendor_usage.code}, '{date_str}')"
-            )
+            if resolution_date and resolution_date < report_date:
+                showwarning("Ошибка!", "Дата и время ремонта должно быть позже даты возникновения!")
+                return
+
+
+            # Подготовка значений для запроса
+            id_type = selected_mal_type.code
+            id_vendor_usage = selected_vendor.code
+            id_employee = f"{selected_employee.TAB}" if selected_employee else "NULL"
+            report_date_str = report_date.strftime('%Y-%m-%d')
+            resolution_date_str = f"'{resolution_date.strftime('%Y-%m-%d')}'" if resolution_date else "NULL"
+
             try:
-                self.db.cursor.execute(query_refill)
+                query = f"""
+                    INSERT INTO Malfunctions
+                    (id_malfunctiontype, id_vendor_usage, id_employee, Status, Reason, report_date, resolution_date)
+                    VALUES ({id_type}, {id_vendor_usage}, {id_employee}, '{status}', '{reason}', '{report_date_str}', {resolution_date_str})
+                """
+                self.db.cursor.execute(query)
                 self.db.connection.commit()
-                # Получаем ID последней вставленной записи (если используется автоинкремент)
-                refill_id = self.db.cursor.lastrowid
-                if not tree.get_children():
-                    showwarning("Внимание!", "Не добавлена ни одна лампа!")
-                    return
-                # Обработка табличной части: перебор строк в treeview
-                for child in tree.get_children():
-                    row = tree.item(child)['values']
-                    # Предположим, что row имеет структуру:
-                    # (id_lamp, article, наименование, quantity, price)
-                    if not row:
-                        showwarning("Внимание!", "Не выбрана ни одна лампа!")
-                        return
-                    lamp_id = row[0]
-                    quantity = int(row[3])
-                    price = float(row[4])
-                    # Формируем запрос вставки для таблицы Lamps_Refills
-                    query_lamp = (
-                        "INSERT INTO Lamps_Refills (id_refill, id_lamp, quantity, price) "
-                        f"VALUES ({refill_id}, {lamp_id}, {quantity}, {price})"
-                    )
-                    self.db.cursor.execute(query_lamp)
-                    self.db.connection.commit()
-                    showinfo("Успех", "Заправка и данные по лампам успешно добавлены!")
-                    self.fetch_data()
-                    self.refresh_widgets()
-                    # При необходимости можно перейти на вкладку "Заправки"
-                    self.notebook.select(self.refill_tab)
+                showinfo("Успех", "Неполадка успешно добавлена.")
+                self.fetch_data()
+                self.refresh_widgets()
+                self.notebook.select(self.malfunction_tab)
+                form.destroy()
             except Exception as e:
-                showerror("Ошибка", f"Ошибка при добавлении заправки: {e}")
-        
+                showerror("Ошибка", f"Ошибка при добавлении неполадки: {e}")
             form.destroy()
-        ttk.Button(form, text="Сохранить", command=save_refill).pack(pady=10)
+        ttk.Button(form, text="Сохранить", command=save_malfunction).pack(pady=10)
         form.mainloop()
 
 
@@ -1287,12 +1289,12 @@ class MainApp:
         frame = ttk.Frame(form)
         frame.pack(padx=10, pady=10, fill="x")
         
-        ttk.Label(frame, text="Код аппарата (Vendor_usage):").grid(row=0, column=0, sticky="w", pady=5)
-        entry_vendor_usage = ttk.Entry(frame)
+        ttk.Label(frame, text="Аппарат:").grid(row=0, column=0, sticky="w", pady=5)
+        entry_vendor_usage = ttk.Combobox(frame, values=[vu for vu in self.vendor_usages])
         entry_vendor_usage.grid(row=0, column=1, pady=5, sticky="ew")
         
-        ttk.Label(frame, text="Код лампы:").grid(row=1, column=0, sticky="w", pady=5)
-        entry_lamp = ttk.Entry(frame)
+        ttk.Label(frame, text="Лампа:").grid(row=1, column=0, sticky="w", pady=5)
+        entry_lamp = ttk.Combobox(frame, values=[lamp for lamp in self.lamps])
         entry_lamp.grid(row=1, column=1, pady=5, sticky="ew")
         
         ttk.Label(frame, text="Цена:").grid(row=2, column=0, sticky="w", pady=5)
@@ -1300,10 +1302,70 @@ class MainApp:
         entry_price.grid(row=2, column=1, pady=5, sticky="ew")
         
         ttk.Label(frame, text="Дата (ГГГГ-ММ-ДД):").grid(row=3, column=0, sticky="w", pady=5)
-        entry_date = ttk.Entry(frame)
+        entry_date = DateEntry(frame, state='readonly')
         entry_date.grid(row=3, column=1, pady=5, sticky="ew")
+        def save_sale():
+            # Извлечение значений из полей формы
+            vendor_usage_str = entry_vendor_usage.get().strip()
+            lamp_str = entry_lamp.get().strip()
+            price_str = entry_price.get().strip()
+            sale_date = entry_date.get_date()  # возвращает объект date
+
+            # Проверка поля "Аппарат"
+            if not vendor_usage_str:
+                showerror("Ошибка!", "Не выбран аппарат!")
+                return
+
+            # Проверка поля "Лампа"
+            if not lamp_str:
+                showerror("Ошибка!", "Не выбрана лампа!")
+                return
+
+            # Проверка даты — дата продажи не должна быть позже текущей даты.
+            current_date = datetime.now().date()
+            if sale_date > current_date:
+                showerror("Ошибка!", "Дата продажи не может быть позже текущей даты!")
+                return
+
+            # Проверка обязательных полей для цены
+            if not price_str:
+                showerror("Ошибка!", "Заполните поле 'Цена'!")
+                return
+            try:
+                price = float(price_str)
+            except ValueError:
+                showerror("Ошибка!", "Цена должна быть числовым значением!")
+                return
+
+            # Поиск объектов по строковому представлению (предполагается, что в классах переопределён __str__)
+            selected_vendor_usage = next((vu for vu in self.vendor_usages if str(vu) == vendor_usage_str), None)
+            selected_lamp = next((lamp for lamp in self.lamps if str(lamp) == lamp_str), None)
+
+            if not selected_vendor_usage:
+                showerror("Ошибка!", "Не выбран аппарат!")
+                return
+            if not selected_lamp:
+                showerror("Ошибка!", "Не выбрана лампа!")
+                return
+
+            # Формирование SQL-запроса для вставки продажи
+            query = f"""
+                INSERT INTO Sale (id_vendor_usage, id_lamp, price, date)
+                VALUES ({selected_vendor_usage.code}, {selected_lamp.code}, {price}, '{sale_date.strftime('%Y-%m-%d')}')
+            """
+            try:
+                self.db.cursor.execute(query)
+                self.db.connection.commit()
+                showinfo("Успех", "Продажа успешно добавлена!")
+                self.fetch_data()
+                self.refresh_widgets()
+                self.notebook.select(self.sale_tab)
+                form.destroy()
+            except Exception as e:
+                showerror("Ошибка", f"Ошибка при добавлении продажи: {e}")
+
         
-        ttk.Button(form, text="Сохранить", command=lambda: print("Сохранение продажи")).pack(pady=10)
+        ttk.Button(form, text="Сохранить", command=save_sale).pack(pady=10)
         form.mainloop()
 
 
@@ -1349,6 +1411,9 @@ class MainApp:
         
         
         def add_row():
+            if not isinstance(entry_quantity.get(), int):
+                showwarning("Ошибка!", "Количество должно быть числовым!")
+                return
             row_values = (code, article, entry_id_lamp.get(), entry_quantity.get(), entry_price.get())
             tree.insert("", END, values=row_values)
             row_win.destroy()

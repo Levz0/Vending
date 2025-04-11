@@ -150,7 +150,7 @@ class ReportsWindow:
     
     def generate_sales_report(self, start_date, end_date):
         title = "Отчет по реализованным лампам\nза период в разрезе автоматов"
-        container = self.tabs[title]["container"]
+        container = self.tabs   [title]["container"]
         self.clear_container(container)
 
         lbl_info = ttk.Label(container, text="Отчет по реализованным лампам за период в разрезе автоматов", font=("Segoe UI", 12))
