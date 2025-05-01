@@ -119,12 +119,12 @@ class ReportsWindow:
         # Таблица с колонками: код аппарата, id сотрудника, аппарат, тип неполадки, дата возникновния, дата ремонта, причина возникновения
         columns = ("код", "сотрудник", "аппарат", "тип неполадки", "дата возникновния", "дата ремонта", "причина возникновения")
         tree = ttk.Treeview(container, columns=columns, show="headings")
+        
         for col in columns:
-            tree.heading(col, text=col)
-            # Убираем фиксированную ширину, оставляя возможность растягивания
+            tree.heading(col, text=col, anchor="center",
+                            command=lambda _col=col: self.treeview_sort_column(tree, _col, False))
             tree.column(col, anchor="center", stretch=True)
         tree.pack(fill=BOTH, expand=True, pady=5)
-        
         # Запрос с добавленным полем m.id_employee
         query = f"""
         SELECT vu.id as код, e.FIO, CONCAT(v.Name, l.Address) as аппарат, 
@@ -147,65 +147,111 @@ class ReportsWindow:
         
         # Автоматически подгоняем ширину столбцов
         self.auto_adjust_columns(tree)
+        
+    def treeview_sort_column(self, tv: ttk.Treeview, col: str, reverse: bool):
+        """Сортирует данные в Treeview по колонке col."""
+        # Получаем список (item_id, значение в столбце col)
+        data = [(tv.set(k, col), k) for k in tv.get_children("")]
+        try:
+            # пытаемся конвертнуть в числа для числовой сортировки
+            data = [(float(v), k) for v, k in data]
+        except ValueError:
+            # оставляем строки
+            pass
+        # собственно сортировка
+        data.sort(reverse=reverse)
+        # переставляем строки
+        for index, (val, k) in enumerate(data):
+            tv.move(k, '', index)
+        # обновляем флаг направления сортировки
+        tv.heading(col, command=lambda: self.treeview_sort_column(tv, col, not reverse))
     
     def generate_sales_report(self, start_date, end_date):
         title = "Отчет по реализованным лампам\nза период в разрезе автоматов"
-        container = self.tabs   [title]["container"]
+        container = self.tabs[title]["container"]
         self.clear_container(container)
 
         lbl_info = ttk.Label(container, text="Отчет по реализованным лампам за период в разрезе автоматов", font=("Segoe UI", 12))
         lbl_info.pack(anchor="n", pady=5)
 
-        # Первый столбец (#0) – для иерархии (здесь будет объединён код и название аппарата)
-        columns = ("тип лампы", "лампа", "цена", "количество", "выручка")
+        # Определяем колонки: тип лампы, дата продажи, лампа, цена
+        columns = ("тип лампы", "дата продажи", "лампа", "цена")
         tree = ttk.Treeview(container, columns=columns, show="tree headings")
         tree.heading("#0", text="Аппарат (код и название)")
         for col in columns:
-            tree.heading(col, text=col)
+            tree.heading(col, text=col, anchor="center")
             tree.column(col, anchor="center", stretch=True)
         tree.pack(fill=BOTH, expand=True, pady=5)
 
         query = f"""
-        SELECT CONCAT('Аппарат № ', vu.id), CONCAT(v.Name, ' ', loc.Name) as аппарат, lt.Name as `тип лампы`, l.Name as лампа, s.price as цена, 
-            COUNT(*) as количество, SUM(s.price) as выручка
+        SELECT 
+            vu.id,
+            CONCAT(v.Name, ' ', loc.Name) AS аппарат,
+            lt.Name AS тип_лампы,
+            s.date AS дата_продажи,
+            l.Name AS лампа,
+            s.price AS цена
         FROM Sale s
         JOIN Vendor_usage vu ON s.id_vendor_usage = vu.id
         JOIN Vendors v ON vu.id_vendor = v.id
+        JOIN Location loc ON vu.id_location = loc.id
         JOIN Lamps l ON s.id_lamp = l.id
         JOIN Lamp_Type lt ON l.id_type = lt.id
-        JOIN Location loc ON vu.id_location = loc.id
         WHERE s.date BETWEEN '{start_date}' AND '{end_date}'
-        GROUP BY v.Name, l.Name, s.price
+        ORDER BY vu.id, s.date
         """
         self.db.cursor.execute(query)
         results = self.db.cursor.fetchall()
 
-        # Группируем по названию аппарата, сохраняя код аппарата из первой записи
         grouped_data = {}
         for row in results:
-            vendor_code = row[0]      # Код аппарата
-            vendor_name = row[1]      # Название аппарата
-            if vendor_name not in grouped_data:
-                grouped_data[vendor_name] = {"code": vendor_code, "rows": []}
-            grouped_data[vendor_name]["rows"].append(row)
+            vendor_code, vendor_name = row[0], row[1]
+            grouped_data.setdefault((vendor_code, vendor_name), []).append(row)
 
-        total = 0
-        for vendor_name, data in grouped_data.items():
-            # Родительский узел: объединяем код и название аппарата
-            parent_text = f"{data['code']} {vendor_name}"
-            parent_id = tree.insert("", END, text=parent_text, values=("", "", "", "", ""))
-            tree.item(parent_id, open=True)  # Узел сразу раскрыт
+        overall_total = 0
+        sort_states = {}
 
-            for row in data["rows"]:
-                # В дочерних узлах первый столбец оставляем пустым, остальные – данные по лампе
-                tree.insert(parent_id, END, text="",
-                            values=(row[2], row[3], row[4], row[5], row[6]))
-                total += row[6]
+        def sort_by_column(tv, col):
+            reverse = sort_states.get(col, False)
+            for parent in tv.get_children():
+                children = list(tv.get_children(parent))
+                children.sort(key=lambda c: tv.set(c, col), reverse=reverse)
+                for idx, child in enumerate(children):
+                    tv.move(child, parent, idx)
+            sort_states[col] = not reverse
 
-        lbl_total = ttk.Label(container, text=f"Итого: {total:.2f}", font=("Segoe UI", 12, "bold"))
+        # Привязка сортировки
+        for col in columns:
+            tree.heading(col, command=lambda _col=col: sort_by_column(tree, _col))
+
+        # Вставляем данные по каждому аппарату и добавляем подитог
+        for (vendor_code, vendor_name), rows in grouped_data.items():
+            parent_text = f"№{vendor_code} {vendor_name}"
+            parent_id = tree.insert("", "end", text=parent_text, values=("", "", "", ""))
+            tree.item(parent_id, open=True)
+
+            group_total = 0
+            for _, _, lamp_type, sale_date, lamp_name, price in rows:
+                date_str = sale_date.strftime("%Y-%m-%d") if hasattr(sale_date, "strftime") else str(sale_date)
+                tree.insert(parent_id, "end", text="",
+                            values=(lamp_type, date_str, lamp_name, f"{price:.2f}"))
+                group_total += price
+                overall_total += price
+
+            # Подитог по этому аппарату
+            tree.insert(parent_id, "end", text="",
+                values=("", "", "Итого по аппарату:", f"{group_total:.2f}"),
+                tags=("subtotal",))
+
+            tree.tag_configure("subtotal", background="#e0e0e0", font=("Segoe UI", 10, "bold"))
+            
+        # Общий итог
+        lbl_total = ttk.Label(container, text=f"Общий итог по всем аппаратам: {overall_total:.2f}", font=("Segoe UI", 12, "bold"))
         lbl_total.pack(anchor="e", pady=5)
 
         self.auto_adjust_columns(tree)
+
+
 
 
     
@@ -213,20 +259,57 @@ class ReportsWindow:
         title = "Отчет по заправкам\nаппаратов за период"
         container = self.tabs[title]["container"]
         self.clear_container(container)
-        
+
+        # Период
         lbl_period = ttk.Label(container, text=f"с {start_date} по {end_date}", font=("Segoe UI", 12))
         lbl_period.pack(anchor="n", pady=5)
-        
-        # Определяем столбцы: первая колонка (#0) будет для аппарата, остальные — для данных заправки и ламп
+
+        # Конфигурируем Treeview
         columns = ("инфо заправки", "лампа", "ед. цена", "количество", "сумма")
         tree = ttk.Treeview(container, columns=columns, show="tree headings")
-        tree.heading("#0", text="аппарат (номер, имя, адрес)")
+        tree.heading("#0", text="аппарат (номер, имя, адрес)", anchor="w")
         tree.column("#0", anchor="w", width=250)
+
+        # Словарь для запоминания направления сортировки по каждому столбцу
+        sort_states = {}
+
+        def sort_column(col, numeric):
+            # Определяем текущее направление (True=asc, False=desc)
+            asc = sort_states.get(col, True)
+            sort_states[col] = not asc  # переключаем на следующий раз
+
+            for parent in tree.get_children(""):
+                children = tree.get_children(parent)
+                normal = [c for c in children if "subtotal" not in tree.item(c, "tags")]
+                subtotal = [c for c in children if "subtotal" in tree.item(c, "tags")]
+
+                def key_func(item):
+                    v = tree.set(item, col)
+                    if numeric:
+                        try:
+                            return float(v)
+                        except ValueError:
+                            return 0.0
+                    return v
+
+                normal.sort(key=key_func, reverse=not asc)
+
+                # Переставляем в дереве: сначала отсортированные, затем subtotal
+                for idx, iid in enumerate(normal):
+                    tree.move(iid, parent, idx)
+                for iid in subtotal:
+                    tree.move(iid, parent, "end")
+
+        # Настраиваем заголовки с привязкой сортировки
         for col in columns:
-            tree.heading(col, text=col)
+            is_num = col in ("ед. цена", "количество", "сумма")
+            tree.heading(col, text=col, anchor="center",
+                        command=lambda c=col, n=is_num: sort_column(c, n))
             tree.column(col, anchor="center", stretch=True)
+
         tree.pack(fill=BOTH, expand=True, pady=5)
-        
+
+        # Получаем данные из БД
         query = f"""
         SELECT 
             vu.id AS vendor_usage_id,
@@ -249,37 +332,73 @@ class ReportsWindow:
         ORDER BY vu.id, r.date, r.id, l.Name
         """
         self.db.cursor.execute(query)
-        results = self.db.cursor.fetchall()
-        
-        current_app = None
-        app_node = ""
-        
-        for row in results:
-            vendor_usage_id = row[0]
-            apparatus_info = row[1]
-            refill_id = row[2]
-            refill_date = row[3]
-            employee = row[4]
-            lamp = row[5]
-            unit_price = row[6]
-            quantity = row[7]
-            sum_total = row[8]
-            
-            # Если сменился аппарат, создаем новый родительский узел
-            if vendor_usage_id != current_app:
-                app_text = f"№ {vendor_usage_id} {apparatus_info}"
-                app_node = tree.insert("", END, text=app_text, values=("", "", "", "", ""))
-                tree.item(app_node, open=True)
-                current_app = vendor_usage_id
-            
-            # Форматируем данные заправки, чтобы вывести их в отдельном столбце
-            formatted_date = refill_date.strftime("%d.%m.%Y") if hasattr(refill_date, "strftime") else refill_date
-            refill_text = f"№ {refill_id} от {formatted_date} ({employee})"
-            
-            # Добавляем строку с данными по лампе, при этом заправка – часть данных, а не отдельный узел
-            tree.insert(app_node, END, text="", values=(refill_text, lamp, unit_price, quantity, sum_total))
-        
+        raw = self.db.cursor.fetchall()
+
+        # Группируем по аппарату
+        grouped = {}
+        for vid, apparatus_info, refill_id, refill_date, employee, lamp, unit_price, quantity, sum_total in raw:
+            grouped.setdefault(vid, {
+                "apparatus": f"№ {vid} {apparatus_info}",
+                "rows": []
+            })["rows"].append((refill_id, refill_date, employee, lamp, unit_price, quantity, sum_total))
+
+        total_all = 0
+        # Вставляем данные в дерево
+        for vid, info in grouped.items():
+            parent = tree.insert("", "end", text=info["apparatus"], values=("", "", "", "", ""))
+            tree.item(parent, open=True)
+            sum_group = 0
+
+            for refill_id, refill_date, employee, lamp, unit_price, quantity, sum_total in info["rows"]:
+                txt = f"№ {refill_id} от {refill_date.strftime('%d.%m.%Y')} ({employee})"
+                tree.insert(parent, "end", text="",
+                            values=(txt, lamp, unit_price, quantity, sum_total))
+                sum_group += sum_total
+
+            total_all += sum_group
+            # Добавляем строку "Итого по аппарату"
+            tree.insert(parent, "end", text="", 
+                        values=("", "", "", "Итого по аппарату:", sum_group),
+                        tags=("subtotal",))
+
+        # Общий итог
+        lbl_total = ttk.Label(container, text=f"Общий итог: {total_all:.2f}",
+                            font=("Segoe UI", 12, "bold"))
+        lbl_total.pack(anchor="e", pady=5)
+
+        # Автоподгонка ширины колонок
         self.auto_adjust_columns(tree)
+
+        # --- Локальная функция сортировки внутри каждой группы ---
+    def sort_within_groups(col, numeric):
+            """
+            Для каждого родителя сортируем его потомков (кроме subtotal)
+            по колонке col.
+            """
+            for parent in tree.get_children(""):
+                children = tree.get_children(parent)
+                # выделим нормальные строки и строку subtotal
+                normal = [c for c in children if "subtotal" not in tree.item(c, "tags")]
+                subtotal = [c for c in children if "subtotal" in tree.item(c, "tags")]
+
+                # ключ сортировки
+                def key_func(item):
+                    val = tree.set(item, col)
+                    if numeric:
+                        try:
+                            return float(val)
+                        except ValueError:
+                            return 0.0
+                    return val
+
+                # сама сортировка (только один раз, без смены направления)
+                normal_sorted = sorted(normal, key=key_func)
+
+                # переставим в порядке normal_sorted + subtotal
+                for idx, iid in enumerate(normal_sorted):
+                    tree.move(iid, parent, idx)
+                for iid in subtotal:
+                    tree.move(iid, parent, "end")
 
 
 

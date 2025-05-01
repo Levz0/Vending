@@ -22,6 +22,6 @@ class DataBase:
             print(f"Ошибка подключения: {err}")
             
     def closeConnection(self):
-        if connection.open:
-            connection.close()
+        if self.connection.open:
+            self.connection.close()
             print("Соединение закрыто.")
