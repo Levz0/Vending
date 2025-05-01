@@ -8,6 +8,7 @@
             "program": "${file}",
             "console": "integratedTerminal",
             "justMyCode": true,
+            "python": "C:/Users/Носова/AppData/Local/Programs/Python/Python313/python.exe"
         }
     ]
 }

@@ -23,5 +23,10 @@ class DataBase:
             
     def closeConnection(self):
         if self.connection.open:
+<<<<<<< HEAD
            self.connection.close()
            print("Соединение закрыто.")
+=======
+            self.connection.close()
+            print("Соединение закрыто.")
+>>>>>>> 80526ba0e9b5c1e7142da5ac125e973c8b1dac38
