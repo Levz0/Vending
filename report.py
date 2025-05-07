@@ -4,6 +4,19 @@ from tkinter import ttk
 from tkcalendar import DateEntry  # Виджет выбора даты
 from datetime import datetime
 from db import DataBase  # Ваш класс подключения к БД (pymysql)
+from tkinter.messagebox import showerror, showwarning, showinfo
+from reportlab.lib.pagesizes import letter, landscape
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib import colors
+from fpdf import FPDF
+import os
+import subprocess
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+import sys
+from reportlab.lib.units import inch
+from reportlab.lib.styles import ParagraphStyle
 
 class ReportsWindow:
     def __init__(self, parent):
@@ -16,6 +29,8 @@ class ReportsWindow:
         self.db = DataBase("127.0.0.1", "root", "", "Vending")
         self.db.connect()
         
+        pdfmetrics.registerFont(TTFont('DejaVuSans', 'DejaVuSans.ttf'))
+        pdfmetrics.registerFont(TTFont('DejaVuSans-Bold', 'DejaVuSans-Bold.ttf')) 
         self.create_widgets()
     
     def create_widgets(self):
@@ -80,19 +95,29 @@ class ReportsWindow:
                 self.tabs[title]["entry_end"] = entry_end
             row += 1
             
-            # Кнопка формирования отчета
-            btn_generate = ttk.Button(frame, text="Сформировать отчет", 
-                                      command=lambda es=self.tabs[title].get("entry_start"),
-                                                     ee=self.tabs[title].get("entry_end"),
-                                                     func=report_func: func(es.get() if es else "", ee.get() if ee else ""))
-            btn_generate.grid(row=row, column=0, pady=10)
-            row += 1
-            
-            # Контейнер для вывода отчета – здесь будет размещена таблица с данными
+            # Создаем контейнер для таблицы — это должно быть раньше кнопок!
             container = ttk.Frame(frame)
             container.grid(row=row, column=0, sticky="nsew", padx=10, pady=10)
             frame.rowconfigure(row, weight=1)
             self.tabs[title]["container"] = container
+            row += 1
+
+            # Теперь создаём фрейм для кнопок
+            btn_frame = ttk.Frame(frame)
+            btn_frame.grid(row=row, column=0, pady=10)
+
+            btn_generate = ttk.Button(btn_frame, text="Сформировать отчет", 
+                command=lambda es=self.tabs[title].get("entry_start"),
+                            ee=self.tabs[title].get("entry_end"),
+                            func=report_func: func(es.get() if es else "", ee.get() if ee else ""))
+            btn_generate.pack(side="left", padx=5)
+
+            btn_export = ttk.Button(btn_frame, text="Экспорт в PDF", 
+                command=lambda c=container, t=title, es=entry_start, ee=entry_end: self.export_to_pdf(c, t, es.get() if es else "",
+                    ee.get() if ee else ""))
+            btn_export.pack(side="left", padx=5)
+
+            row += 1
 
     def auto_adjust_columns(self, tree):
         default_font = font.nametofont("TkDefaultFont")
@@ -461,3 +486,139 @@ class ReportsWindow:
                 tree.insert(parent_id, END, text="", values=(lamp_type, quantity, revenue))
         
         self.auto_adjust_columns(tree)
+        
+
+    def export_to_pdf(self, container, title, start_date, end_date):
+        # 1) Найти Treeview
+        tree = None
+        for w in container.winfo_children():
+            if isinstance(w, ttk.Treeview):
+                tree = w
+                break
+        if not tree:
+            showerror("Ошибка", "Не найдена таблица для экспорта")
+            return
+
+        # 2) Определить заголовки и колонки
+        is_mal = "неполадках" in title.lower()
+        if is_mal:
+            headers = [tree.heading(c)["text"] for c in tree["columns"]]
+            cols = list(tree["columns"])
+        else:
+            headers = [tree.heading("#0")["text"]] + [tree.heading(c)["text"] for c in tree["columns"]]
+            cols = ["#0"] + list(tree["columns"])
+
+        # 3) Собрать все строки (с учётом иерархии)
+        def collect(parent=""):
+            out = []
+            for iid in tree.get_children(parent):
+                row = []
+                if not is_mal:
+                    row.append(tree.item(iid)["text"])
+                for c in tree["columns"]:
+                    row.append(tree.set(iid, c))
+                out.append(row)
+                out += collect(iid)
+            return out
+        data_rows = collect()
+
+        # 4) Посчитать общий итог по числовым колонкам (например, последняя колонка)
+        overall = 0.0
+        if not is_mal:
+            # допустим, итог берем из последнего столбца
+            for r in data_rows:
+                try:
+                    overall += float(r[-1])
+                except:
+                    pass
+
+        # 5) Подготовить стили и размеры
+        pdfmetrics.registerFont(TTFont('DejaVuSans', 'DejaVuSans.ttf'))
+        styles = getSampleStyleSheet()
+        title_st = styles['Title'].clone('t'); title_st.fontName='DejaVuSans'; title_st.fontSize=16
+        small_st = styles['Normal'].clone('n'); small_st.fontName='DejaVuSans'; small_st.fontSize=6
+        bold_st  = styles['Normal'].clone('b'); bold_st.fontName='DejaVuSans'; bold_st.fontSize=8
+
+        # Площадь для таблицы
+        pw, ph = landscape(letter)
+        margin = 30
+        avail_width = pw - 2*margin
+        col_w = avail_width / len(headers)
+
+        # 6) Построить заголовок и дату (дата — справа)
+        creation = datetime.now().strftime("%Y-%m-%d")
+        period_text = f"Период: с {start_date} по {end_date}"
+        avail_width = letter[0] - 2*inch
+        title_st = ParagraphStyle('title', fontName='DejaVuSans', fontSize=14, leading=16)
+        small_st = ParagraphStyle('small', fontName='DejaVuSans', fontSize=10)
+        bold_st  = ParagraphStyle('bold',  fontName='DejaVuSans-Bold', fontSize=10)
+        header_table = Table(
+            [
+            # строка с заголовком и датой
+            [Paragraph(title, title_st), Paragraph(f"Дата: {creation}", bold_st)],
+            # строка с периодом и пустой ячейкой справа
+            [Paragraph(period_text, small_st), ""]
+            ],
+            colWidths=[avail_width*0.7, avail_width*0.3]
+        )
+        header_table.setStyle(TableStyle([
+            ('VALIGN',(0,0),(-1,-1),'TOP'),
+            ('ALIGN',(0,0),(0,0),'LEFT'),
+            ('ALIGN',(1,0),(1,0),'RIGHT'),
+            ('FONTNAME',(0,0),(-1,-1),'DejaVuSans'),
+            ('FONTSIZE',(1,0),(1,0),10),
+            ('BOTTOMPADDING',(0,0),(-1,-1),12),
+        ]))
+
+        # 7) Построить таблицу с данными
+        table_data = [[Paragraph(h, small_st) for h in headers]]
+        for row in data_rows:
+            table_data.append([Paragraph(str(cell), small_st) for cell in row])
+        tbl = Table(table_data, colWidths=[col_w]*len(headers))
+        tbl.setStyle(TableStyle([
+            ('FONTNAME', (0,0), (-1,-1), 'DejaVuSans'),
+            ('FONTSIZE',  (0,0), (-1,0),   8),
+            ('FONTSIZE',  (0,1), (-1,-1),  6),
+            ('BACKGROUND',(0,0),(-1,0),    colors.grey),
+            ('TEXTCOLOR', (0,0),(-1,0),    colors.whitesmoke),
+            ('ALIGN',     (0,0),(-1,-1),   'CENTER'),
+            ('VALIGN',    (0,0),(-1,-1),   'MIDDLE'),
+            ('INNERGRID', (0,0),(-1,-1),   0.25, colors.grey),
+            ('BOX',       (0,0),(-1,-1),   0.5, colors.black),
+            ('LEFTPADDING',(0,0),(-1,-1),  2),
+            ('RIGHTPADDING',(0,0),(-1,-1), 2),
+            ('TOPPADDING',(0,0),(-1,-1),    1),
+            ('BOTTOMPADDING',(0,0),(-1,-1), 1),
+        ]))
+
+        # 8) Сборка элементов
+        elems = [header_table, Spacer(1,12), tbl, Spacer(1,12)]
+
+        # 9) Общий итог (если не неполадки)
+        if overall and not is_mal:
+            elems.append(Paragraph(f"Общий итог по документу: <b>{overall:.2f}</b>", bold_st))
+            elems.append(Spacer(1,12))
+
+        # 10) Подпись (большим шрифтом)
+        sign = Paragraph("Подпись: ____________________", styles['Normal'].clone('s')\
+                         .clone('sig', fontName='DejaVuSans', fontSize=10))
+        elems.append(sign)
+
+        # 11) Создать PDF в альбомной ориентации
+        filename = f"report_{datetime.now():%Y%m%d_%H%M%S}.pdf"
+        doc = SimpleDocTemplate(
+            filename,
+            pagesize=landscape(letter),
+            leftMargin=margin, rightMargin=margin,
+            topMargin=margin, bottomMargin=margin
+        )
+        doc.build(elems)
+
+        # 12) Открыть автоматически
+        try:
+            if sys.platform.startswith("win"):    os.startfile(filename)
+            elif sys.platform=="darwin":          subprocess.call(["open",filename])
+            else:                                 subprocess.call(["xdg-open",filename])
+        except: pass
+
+        showinfo("Успех", f"Отчет сохранен как {filename}")
