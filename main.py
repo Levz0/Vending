@@ -252,6 +252,44 @@ class MainApp:
         self.notebook = ttk.Notebook(main_frame)
         self.notebook.pack(fill=BOTH, expand=True)
 
+        # Вкладка Должности
+        posts_columns = [
+            ("Код", "code"),
+            ("Название", "name")
+        ]
+        self.create_tab("Должности", posts_columns, self.posts)
+        
+        # Вкладка типов ламп
+        lamp_types_columns = [
+            ("Код", "code"),
+            ("Название", "name")
+        ]
+        self.create_tab("Типы ламп", lamp_types_columns, self.lamp_types)
+        
+        # Вкладка типов неисправностей
+        malfunction_types_columns = [
+            ("Код", "code"),
+            ("Название", "name")
+        ]
+        self.create_tab("Типы неисправностей", malfunction_types_columns, self.malfunction_types)
+        
+        # Вкладка локаций
+        locations_columns = [
+            ("Код", "code"),
+            ("Название объекта", "name"),
+            ("Адрес", "address")
+        ]
+        self.create_tab("Локации", locations_columns, self.locations)
+        
+         # Вкладка локаций
+        vendors_columns = [
+            ("Код", "code"),
+            ("Модель аппарата", "name"),
+            ("Описание", "description")
+        ]
+        self.create_tab("Модели аппаратов", vendors_columns, self.vendors)
+        
+        
         # Вкладка "Аппараты" (на основе Vendor_usage)
         apparatus_columns = [
             ("Код", "code"),
@@ -768,6 +806,9 @@ class MainApp:
             report_date_new = entry_report_date.get()
             resolution_date_new = entry_resolution_date.get()
             code = values[0]
+            if reason_new is "":
+                showerror("Ошибка!", "Причина возникновения неисправности должна быть введена!")
+                return
             query = (
                 "UPDATE Malfunctions SET id_malfunctiontype = (SELECT id FROM Malfunction_Type WHERE Name = '{type}'), "
                 "id_employee = (SELECT id FROM Employee WHERE FIO = '{employee}'), Status = '{status}', "
@@ -974,9 +1015,19 @@ class MainApp:
         
         def save_lamp():
             article = entry_article.get().strip()
-            name = entry_name.get().strip()
+            name = entry_name.get()
             lamp_type_name = entry_type.get().strip()
             selected_lamp_type = next((lt for lt in self.lamp_types if lt.name == lamp_type_name), None)
+            try:
+                voltage = float(entry_voltage.get())
+                colorTemp = float(entry_colorTemp.get())
+                price = float(entry_price.get())
+            except ValueError:
+                showerror("Ошибка", "Введите числовые значения для напряжения, цветовой температуры и цены")
+                return
+            if len(name) < 8:
+                showerror("Ошибка!", "Наименование лампы должно содержать минимум 8 символов")
+                return
             if not selected_lamp_type:
                 showerror("Ошибка!", "Выберите тип лампы!")
                 return
@@ -989,13 +1040,13 @@ class MainApp:
             if entry_voltage.get() is "":
                 showerror("Ошибка!", "Введите напряжение!")
                 return
-            try:
-                voltage = float(entry_voltage.get())
-                colorTemp = float(entry_colorTemp.get())
-                price = float(entry_price.get())
-            except ValueError:
-                showerror("Ошибка", "Введите числовые значения для напряжения, цветовой температуры и цены")
+            if int(entry_voltage.get()) < 180 or int(entry_voltage.get()) > 250:
+                showerror("Ошибка!", "Напряжение должно быть в диапазоне от 180 до 250!")
                 return
+            if int(entry_colorTemp.get()) < 500 or int(entry_colorTemp.get()) > 7000:
+                showerror("Ошибка!", "Цветовая температура должна быть в диапазоне 500–7000K!")
+                return
+           
             description = text_description.get("1.0", END).strip()
             
             query = (
@@ -1411,10 +1462,19 @@ class MainApp:
         
         
         def add_row():
-            if not isinstance(entry_quantity.get(), int):
-                showwarning("Ошибка!", "Количество должно быть числовым!")
+            # Исправленная проверка
+            try:
+                quantity = int(entry_quantity.get())  # Пробуем преобразовать в число
+            except ValueError:
+                showwarning("Ошибка!", "Количество должно быть целым числом!")
                 return
-            row_values = (code, article, entry_id_lamp.get(), entry_quantity.get(), entry_price.get())
+            
+            # Проверка на положительное значение
+            if quantity <= 0:
+                showwarning("Ошибка!", "Количество должно быть больше нуля!")
+                return
+
+            row_values = (code, article, entry_id_lamp.get(), quantity, entry_price.get())
             tree.insert("", END, values=row_values)
             row_win.destroy()
             
