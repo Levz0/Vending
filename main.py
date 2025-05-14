@@ -5,10 +5,10 @@ from tkinter import *
 import random
 from datetime import datetime, time
 from tkcalendar import DateEntry
-
-
-import os
+import subprocess
 import sys
+from fpdf import FPDF
+import os
 
 # Цветовая схема
 BG_COLOR = "#f8f9fa"
@@ -252,44 +252,6 @@ class MainApp:
         self.notebook = ttk.Notebook(main_frame)
         self.notebook.pack(fill=BOTH, expand=True)
 
-        # Вкладка Должности
-        posts_columns = [
-            ("Код", "code"),
-            ("Название", "name")
-        ]
-        self.create_tab("Должности", posts_columns, self.posts)
-        
-        # Вкладка типов ламп
-        lamp_types_columns = [
-            ("Код", "code"),
-            ("Название", "name")
-        ]
-        self.create_tab("Типы ламп", lamp_types_columns, self.lamp_types)
-        
-        # Вкладка типов неисправностей
-        malfunction_types_columns = [
-            ("Код", "code"),
-            ("Название", "name")
-        ]
-        self.create_tab("Типы неисправностей", malfunction_types_columns, self.malfunction_types)
-        
-        # Вкладка локаций
-        locations_columns = [
-            ("Код", "code"),
-            ("Название объекта", "name"),
-            ("Адрес", "address")
-        ]
-        self.create_tab("Локации", locations_columns, self.locations)
-        
-         # Вкладка локаций
-        vendors_columns = [
-            ("Код", "code"),
-            ("Модель аппарата", "name"),
-            ("Описание", "description")
-        ]
-        self.create_tab("Модели аппаратов", vendors_columns, self.vendors)
-        
-        
         # Вкладка "Аппараты" (на основе Vendor_usage)
         apparatus_columns = [
             ("Код", "code"),
@@ -387,6 +349,9 @@ class MainApp:
                            style="Primary.TButton"
                            ).pack(side=LEFT, padx=5)
         ttk.Button(control_frame, text="Отчеты", style="Primary.TButton", command=self.open_reports_window).pack(side=LEFT, padx=5)
+        ttk.Button(control_frame, text="Печать заправки", style="Primary.TButton",
+           command=self.print_selected_refill).pack(side=LEFT, padx=5)
+
     import tkinter.font as tkFont
 
     def open_add_form(self, current_tab_index):
@@ -806,9 +771,6 @@ class MainApp:
             report_date_new = entry_report_date.get()
             resolution_date_new = entry_resolution_date.get()
             code = values[0]
-            if reason_new is "":
-                showerror("Ошибка!", "Причина возникновения неисправности должна быть введена!")
-                return
             query = (
                 "UPDATE Malfunctions SET id_malfunctiontype = (SELECT id FROM Malfunction_Type WHERE Name = '{type}'), "
                 "id_employee = (SELECT id FROM Employee WHERE FIO = '{employee}'), Status = '{status}', "
@@ -1015,19 +977,9 @@ class MainApp:
         
         def save_lamp():
             article = entry_article.get().strip()
-            name = entry_name.get()
+            name = entry_name.get().strip()
             lamp_type_name = entry_type.get().strip()
             selected_lamp_type = next((lt for lt in self.lamp_types if lt.name == lamp_type_name), None)
-            try:
-                voltage = float(entry_voltage.get())
-                colorTemp = float(entry_colorTemp.get())
-                price = float(entry_price.get())
-            except ValueError:
-                showerror("Ошибка", "Введите числовые значения для напряжения, цветовой температуры и цены")
-                return
-            if len(name) < 8:
-                showerror("Ошибка!", "Наименование лампы должно содержать минимум 8 символов")
-                return
             if not selected_lamp_type:
                 showerror("Ошибка!", "Выберите тип лампы!")
                 return
@@ -1040,13 +992,13 @@ class MainApp:
             if entry_voltage.get() is "":
                 showerror("Ошибка!", "Введите напряжение!")
                 return
-            if int(entry_voltage.get()) < 180 or int(entry_voltage.get()) > 250:
-                showerror("Ошибка!", "Напряжение должно быть в диапазоне от 180 до 250!")
+            try:
+                voltage = float(entry_voltage.get())
+                colorTemp = float(entry_colorTemp.get())
+                price = float(entry_price.get())
+            except ValueError:
+                showerror("Ошибка", "Введите числовые значения для напряжения, цветовой температуры и цены")
                 return
-            if int(entry_colorTemp.get()) < 500 or int(entry_colorTemp.get()) > 7000:
-                showerror("Ошибка!", "Цветовая температура должна быть в диапазоне 500–7000K!")
-                return
-           
             description = text_description.get("1.0", END).strip()
             
             query = (
@@ -1462,19 +1414,10 @@ class MainApp:
         
         
         def add_row():
-            # Исправленная проверка
-            try:
-                quantity = int(entry_quantity.get())  # Пробуем преобразовать в число
-            except ValueError:
-                showwarning("Ошибка!", "Количество должно быть целым числом!")
+            if not isinstance(entry_quantity.get(), int):
+                showwarning("Ошибка!", "Количество должно быть числовым!")
                 return
-            
-            # Проверка на положительное значение
-            if quantity <= 0:
-                showwarning("Ошибка!", "Количество должно быть больше нуля!")
-                return
-
-            row_values = (code, article, entry_id_lamp.get(), quantity, entry_price.get())
+            row_values = (code, article, entry_id_lamp.get(), entry_quantity.get(), entry_price.get())
             tree.insert("", END, values=row_values)
             row_win.destroy()
             
@@ -1560,6 +1503,106 @@ class MainApp:
                     max_width = cell_width
             # Добавляем небольшой отступ (например, 10 пикселей)
             tree.column(col, width=max_width + 10)
+        
+    def print_selected_refill(self):
+        # Получаем текущую активную вкладку
+        current_tab = self.notebook.select()
+        title = self.notebook.tab(current_tab, "text")
+
+        if "заправки" not in title.lower():
+            showwarning("Внимание", "Печать доступна только для вкладки 'Заправки'")
+            return
+
+        tree = None
+        container = self.tabs[title]["container"]
+        for widget in container.winfo_children():
+            if isinstance(widget, ttk.Treeview):
+                tree = widget
+                break
+
+        if not tree:
+            showerror("Ошибка", "Не найдена таблица заправок")
+            return
+
+        selected = tree.focus()
+        if not selected:
+            showwarning("Внимание", "Выберите запись заправки для печати")
+            return
+
+        refill_id = tree.item(selected)["values"][0]
+        self._generate_refill_pdf(refill_id)
+
+
+    def _generate_refill_pdf(self, refill_id):
+        # 1. Считываем из БД данные заправки
+        self.db.cursor.execute(f"""
+            SELECT r.id, e.FIO, vu.id, v.Name, loc.Name, r.date
+            FROM Refill r
+            JOIN Employee e ON r.id_employee = e.id
+            JOIN Vendor_usage vu ON r.id_vendor_usage = vu.id
+            JOIN Vendors v ON vu.id_vendor = v.id
+            JOIN Location loc ON vu.id_location = loc.id
+            WHERE r.id = {refill_id}
+        """)
+        rid, fio, vu_id, vendor_name, loc_name, date = self.db.cursor.fetchone()
+
+        self.db.cursor.execute(f"""
+            SELECT l.Name, lr.quantity, lr.price, (lr.quantity * lr.price) AS total
+            FROM Lamps_Refills lr
+            JOIN Lamps l ON lr.id_lamp = l.id
+            WHERE lr.id_refill = {refill_id}
+        """)
+        lamps = self.db.cursor.fetchall()
+
+        # 2. Генерируем PDF через FPDF
+        pdf = FPDF(orientation='L', unit='mm', format='A4')
+        pdf.add_page()
+        pdf.set_font("Arial", "B", 16)
+        pdf.cell(0, 10, f"ЗАПРАВКА №{rid}", ln=True, align="C")
+        pdf.ln(5)
+        pdf.set_font("Arial", size=12)
+        pdf.cell(0, 8, f"Сотрудник: {fio}", ln=True)
+        pdf.cell(0, 8, f"Автомат: №{vu_id} {vendor_name}, {loc_name}", ln=True)
+        pdf.cell(0, 8, f"Дата заправки: {date}", ln=True)
+        pdf.ln(5)
+
+        # Таблица ламп
+        pdf.set_font("Arial", "B", 12)
+        pdf.cell(80, 8, "Лампа", border=1)
+        pdf.cell(30, 8, "Кол-во", border=1)
+        pdf.cell(30, 8, "Цена ед., руб.", border=1)
+        pdf.cell(30, 8, "Сумма, руб.", border=1, ln=True)
+
+        pdf.set_font("Arial", size=12)
+        total_all = 0
+        for name, qty, price, total in lamps:
+            pdf.cell(80, 8, name, border=1)
+            pdf.cell(30, 8, str(qty), border=1, align="R")
+            pdf.cell(30, 8, f"{price:.2f}", border=1, align="R")
+            pdf.cell(30, 8, f"{total:.2f}", border=1, align="R", ln=True)
+            total_all += total
+
+        pdf.ln(5)
+        pdf.set_font("Arial", "B", 12)
+        pdf.cell(140, 8, "Общий итог:", border=0)
+        pdf.cell(30, 8, f"{total_all:.2f}", border=1, align="R")
+        pdf.ln(15)
+
+        pdf.set_font("Arial", size=10)
+        pdf.cell(0, 8, "Подпись: ____________________", ln=True)
+
+        # 3. Сохраняем и сразу открываем
+        filename = f"refill_{rid}.pdf"
+        pdf.output(filename)
+        try:
+            if sys.platform.startswith("win"):
+                os.startfile(filename)
+            elif sys.platform == "darwin":
+                subprocess.call(["open", filename])
+            else:
+                subprocess.call(["xdg-open", filename])
+        except Exception:
+            pass
 
     def open_reports_window(self):
         from report import ReportsWindow
