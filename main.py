@@ -2,6 +2,7 @@ from tkinter import ttk, Tk, Entry, StringVar
 from tkinter.messagebox import showerror, showwarning, showinfo
 import tkinter.font as tkFont
 from tkinter import *
+import tkinter as tk
 import random
 from datetime import datetime, time
 from tkcalendar import DateEntry
@@ -247,11 +248,48 @@ class MainApp:
     def create_widgets(self):
         main_frame = ttk.Frame(self.root)
         main_frame.pack(fill=BOTH, expand=True, padx=20, pady=20)
-
+        self.tabs = {}
         # Ноутбук с вкладками
         self.notebook = ttk.Notebook(main_frame)
         self.notebook.pack(fill=BOTH, expand=True)
 
+        # Вкладка Должности
+        posts_columns = [
+            ("Код", "code"),
+            ("Название", "name")
+        ]
+        self.create_tab("Должности", posts_columns, self.posts)
+        
+        # Вкладка типов ламп
+        lamp_types_columns = [
+            ("Код", "code"),
+            ("Название", "name")
+        ]
+        self.create_tab("Типы ламп", lamp_types_columns, self.lamp_types)
+        
+        # Вкладка типов неисправностей
+        malfunction_types_columns = [
+            ("Код", "code"),
+            ("Название", "name")
+        ]
+        self.create_tab("Типы неисправностей", malfunction_types_columns, self.malfunction_types)
+        
+        # Вкладка локаций
+        locations_columns = [
+            ("Код", "code"),
+            ("Название объекта", "name"),
+            ("Адрес", "address")
+        ]
+        self.create_tab("Локации", locations_columns, self.locations)
+        
+         # Вкладка локаций
+        vendors_columns = [
+            ("Код", "code"),
+            ("Модель аппарата", "name"),
+            ("Описание", "description")
+        ]
+        self.create_tab("Модели аппаратов", vendors_columns, self.vendors)
+        
         # Вкладка "Аппараты" (на основе Vendor_usage)
         apparatus_columns = [
             ("Код", "code"),
@@ -348,7 +386,6 @@ class MainApp:
                            text=action, 
                            style="Primary.TButton"
                            ).pack(side=LEFT, padx=5)
-        ttk.Button(control_frame, text="Отчеты", style="Primary.TButton", command=self.open_reports_window).pack(side=LEFT, padx=5)
         ttk.Button(control_frame, text="Печать заправки", style="Primary.TButton",
            command=self.print_selected_refill).pack(side=LEFT, padx=5)
 
@@ -1438,6 +1475,7 @@ class MainApp:
         """
         frame = ttk.Frame(self.notebook)
         self.notebook.add(frame, text=title)
+        self.tabs[title] = {"container": frame}
         match(title):
             case "Аппараты":
                 self.vendor_tab = frame
@@ -1505,36 +1543,42 @@ class MainApp:
             tree.column(col, width=max_width + 10)
         
     def print_selected_refill(self):
-        # Получаем текущую активную вкладку
-        current_tab = self.notebook.select()
-        title = self.notebook.tab(current_tab, "text")
-
+        # 1. Получаем текущую вкладку и её фрейм
+        tab_id = self.notebook.select()
+        title = self.notebook.tab(tab_id, "text")
         if "заправки" not in title.lower():
-            showwarning("Внимание", "Печать доступна только для вкладки 'Заправки'")
+            showwarning("Внимание", "Печать доступна только на вкладке «Заправки»")
             return
+        container = self.notebook.nametowidget(tab_id)
 
-        tree = None
-        container = self.tabs[title]["container"]
-        for widget in container.winfo_children():
-            if isinstance(widget, ttk.Treeview):
-                tree = widget
-                break
+        # 2. Рекурсивно ищем в контейнере первый Treeview
+        def find_tree(w):
+            if isinstance(w, ttk.Treeview):
+                return w
+            for c in w.winfo_children():
+                t = find_tree(c)
+                if t: return t
+            return None
 
+        tree = find_tree(container)
         if not tree:
             showerror("Ошибка", "Не найдена таблица заправок")
             return
 
-        selected = tree.focus()
-        if not selected:
-            showwarning("Внимание", "Выберите запись заправки для печати")
+        # 3. Берём выделение
+        sel = tree.selection()
+        if not sel:
+            showwarning("Внимание", "Сначала выберите запись заправки")
             return
 
-        refill_id = tree.item(selected)["values"][0]
+        # 4. Пусть ID в первой колонке
+        refill_id = tree.item(sel[0], "values")[0]
+
+        # 5. Генерируем PDF
         self._generate_refill_pdf(refill_id)
 
-
     def _generate_refill_pdf(self, refill_id):
-        # 1. Считываем из БД данные заправки
+        # --- 1. Данные по заправке
         self.db.cursor.execute(f"""
             SELECT r.id, e.FIO, vu.id, v.Name, loc.Name, r.date
             FROM Refill r
@@ -1554,26 +1598,34 @@ class MainApp:
         """)
         lamps = self.db.cursor.fetchall()
 
-        # 2. Генерируем PDF через FPDF
+        # --- 2. PDF через FPDF (с Unicode‑шрифтами)
         pdf = FPDF(orientation='L', unit='mm', format='A4')
         pdf.add_page()
-        pdf.set_font("Arial", "B", 16)
+
+        # Регистрация шрифтов (файлы рядом с main.py)
+        pdf.add_font('DejaVu', '', 'fonts/DEJAVUSANS.TTF', uni=True)
+        pdf.add_font('DejaVu', 'B', 'fonts/DEJAVUSANS-BOLD.TTF', uni=True)
+
+        # Заголовок
+        pdf.set_font('DejaVu', 'B', 16)
         pdf.cell(0, 10, f"ЗАПРАВКА №{rid}", ln=True, align="C")
         pdf.ln(5)
-        pdf.set_font("Arial", size=12)
+
+        # Инфо
+        pdf.set_font('DejaVu', '', 12)
         pdf.cell(0, 8, f"Сотрудник: {fio}", ln=True)
         pdf.cell(0, 8, f"Автомат: №{vu_id} {vendor_name}, {loc_name}", ln=True)
         pdf.cell(0, 8, f"Дата заправки: {date}", ln=True)
         pdf.ln(5)
 
         # Таблица ламп
-        pdf.set_font("Arial", "B", 12)
+        pdf.set_font('DejaVu', 'B', 12)
         pdf.cell(80, 8, "Лампа", border=1)
-        pdf.cell(30, 8, "Кол-во", border=1)
-        pdf.cell(30, 8, "Цена ед., руб.", border=1)
+        pdf.cell(30, 8, "Кол-во", border=1, align="C")
+        pdf.cell(30, 8, "Цена ед., руб.", border=1, align="C")
         pdf.cell(30, 8, "Сумма, руб.", border=1, ln=True)
 
-        pdf.set_font("Arial", size=12)
+        pdf.set_font('DejaVu', '', 12)
         total_all = 0
         for name, qty, price, total in lamps:
             pdf.cell(80, 8, name, border=1)
@@ -1582,31 +1634,29 @@ class MainApp:
             pdf.cell(30, 8, f"{total:.2f}", border=1, align="R", ln=True)
             total_all += total
 
+        # Итог
         pdf.ln(5)
-        pdf.set_font("Arial", "B", 12)
+        pdf.set_font('DejaVu', 'B', 12)
         pdf.cell(140, 8, "Общий итог:", border=0)
         pdf.cell(30, 8, f"{total_all:.2f}", border=1, align="R")
         pdf.ln(15)
 
-        pdf.set_font("Arial", size=10)
+        # Подпись
+        pdf.set_font('DejaVu', '', 10)
         pdf.cell(0, 8, "Подпись: ____________________", ln=True)
 
-        # 3. Сохраняем и сразу открываем
-        filename = f"refill_{rid}.pdf"
-        pdf.output(filename)
+        # --- 3. Сохранить и открыть
+        fname = f"refill_{rid}.pdf"
+        pdf.output(fname)
         try:
             if sys.platform.startswith("win"):
-                os.startfile(filename)
+                os.startfile(fname)
             elif sys.platform == "darwin":
-                subprocess.call(["open", filename])
+                subprocess.call(["open", fname])
             else:
-                subprocess.call(["xdg-open", filename])
+                subprocess.call(["xdg-open", fname])
         except Exception:
             pass
-
-    def open_reports_window(self):
-        from report import ReportsWindow
-        ReportsWindow(self.root)
 
 if __name__ == "__main__":
     root = Tk()
