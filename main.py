@@ -381,11 +381,17 @@ class MainApp:
                            style="Primary.TButton",
                            command=self.edit_selected
                            ).pack(side=LEFT, padx=5)
+            elif action == "Удалить":
+                ttk.Button(control_frame, 
+                           text=action, 
+                           style="Primary.TButton",
+                           command=self.delete_row).pack(side=LEFT, padx=5)
             else:
                 ttk.Button(control_frame, 
                            text=action, 
                            style="Primary.TButton"
                            ).pack(side=LEFT, padx=5)
+        ttk.Button(control_frame, text="Отчеты", style="Primary.TButton", command=self.open_reports_window).pack(side=LEFT, padx=5)
         ttk.Button(control_frame, text="Печать заправки", style="Primary.TButton",
            command=self.print_selected_refill).pack(side=LEFT, padx=5)
 
@@ -409,12 +415,45 @@ class MainApp:
                 self.show_add_sale_form()
             case _:
                 print("Неизвестная вкладка для добавления")
-
+    def delete_row(self):
+        current_tab = self.notebook.nametowidget(self.notebook.select())
+        tab_name = self.notebook.tab(self.notebook.select(), "text")
+        
+        def find_treeview(widget):
+            if isinstance(widget, ttk.Treeview):
+                return widget
+            for child in widget.winfo_children():
+                result = find_treeview(child)
+                if result:
+                    return result
+            return None
+        
+        tree = find_treeview(current_tab)
+        item_id = tree.focus()
+        if not item_id:
+            showwarning("Внимание", "Выберите элемент для удаления")
+            return
+        values = tree.item(item_id)['values']
+        match(tab_name):
+            case "Аппараты":
+                pass
+            case "Лампы":
+                pass
+            case "Сотрудники":
+                pass
+            case "Заправки":
+                pass
+            case "Неполадки":
+                pass
+            case "Продажи":
+                pass
+        
+    
     
     def edit_selected(self):
         current_tab = self.notebook.nametowidget(self.notebook.select())
         tab_name = self.notebook.tab(self.notebook.select(), "text")
-
+        
         def find_treeview(widget):
             if isinstance(widget, ttk.Treeview):
                 return widget
@@ -434,7 +473,7 @@ class MainApp:
         if not item_id:
             showwarning("Внимание", "Выберите строку для редактирования")
             return
-
+        
         values = tree.item(item_id)['values']
         match(tab_name):
             case "Аппараты":
@@ -715,7 +754,8 @@ class MainApp:
                 tree.insert("", END, values=(lamp.code, lamp.article, str(lamp), row[2], row[3]))
         
         ttk.Button(form, text="Добавить лампу", command=lambda: self.add_lamp_refill_row(tree)).pack(pady=5)
-    
+        ttk.Button(form, text="Удалить лампу", command=lambda: self.delete_lamp_refll_row(tree)).pack(pady=5)
+        
         def save_changes():
             employee = next((emp for emp in self.employees if str(emp) == entry_employee.get()), None)
             vendor_usage = next((vu for vu in self.vendor_usages if str(vu) == entry_vendor_usage.get()), None)
@@ -1408,7 +1448,14 @@ class MainApp:
         ttk.Button(form, text="Сохранить", command=save_sale).pack(pady=10)
         form.mainloop()
 
-
+    def delete_lamp_refll_row(self, tree):
+        selected = tree.selection()
+        if not selected:
+            showwarning("Внимание", "Выберите строку для удаления")
+            return
+        tree.delete(selected[0])
+        
+        
     def add_lamp_refill_row(self, tree):
         # Открываем небольшое окно для ввода одной строки для Lamp_Refills
         row_win = Toplevel(self.root)
@@ -1451,10 +1498,19 @@ class MainApp:
         
         
         def add_row():
-            if not isinstance(entry_quantity.get(), int):
-                showwarning("Ошибка!", "Количество должно быть числовым!")
+            try:
+                quantity = int(entry_quantity.get())
+                # Дальнейшая обработка quantity
+            except ValueError:
+                showwarning("Ошибка!", "Количество должно быть целым числом!")
                 return
-            row_values = (code, article, entry_id_lamp.get(), entry_quantity.get(), entry_price.get())
+            try:
+                price = float(entry_price.get())
+                # Дальнейшая обработка quantity
+            except ValueError:
+                showwarning("Ошибка!", "Цена должна быть дробным числом!")
+                return
+            row_values = (code, article, entry_id_lamp.get(), quantity, price)
             tree.insert("", END, values=row_values)
             row_win.destroy()
             
@@ -1657,6 +1713,10 @@ class MainApp:
                 subprocess.call(["xdg-open", fname])
         except Exception:
             pass
+    def open_reports_window(self):
+        from report import ReportsWindow
+        ReportsWindow(self.root)
+
 
 if __name__ == "__main__":
     root = Tk()
