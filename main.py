@@ -1,4 +1,4 @@
-from tkinter import ttk, Tk, Entry, StringVar
+from tkinter import ttk, Tk, Entry, StringVar, messagebox
 from tkinter.messagebox import showerror, showwarning, showinfo
 import tkinter.font as tkFont
 from tkinter import *
@@ -430,17 +430,39 @@ class MainApp:
         
         tree = find_treeview(current_tab)
         item_id = tree.focus()
-        if not item_id:
+        if not item_id: 
             showwarning("Внимание", "Выберите элемент для удаления")
             return
+        
         values = tree.item(item_id)['values']
+        if not messagebox.askyesno("Подтверждение", "Удалить выбранную запись?"):
+            return 
+        
         match(tab_name):
             case "Аппараты":
-                pass
+                try:
+                    self.db.cursor.execute(f"delete from Vendor_usage where id={values[0]}")
+                    self.db.connection.commit()
+                    tree.delete(item_id)
+                    messagebox.showinfo("Успешно!", "Аппарат успешно удален!")
+                except:
+                    messagebox.showerror("Ошибка!", "Невозможно удалить аппарат, который фигурирует в документах!")
             case "Лампы":
-                pass
+                try:
+                    self.db.cursor.execute(f"delete from Lamps where id={values[0]}")
+                    self.db.connection.commit()
+                    tree.delete(item_id)
+                    messagebox.showinfo("Успешно!", "Лампа успешно удалена!")
+                except:
+                    messagebox.showerror("Ошибка!", "Невозможно удалить лампу, которая используется в документах!")
             case "Сотрудники":
-                pass
+                try:
+                    self.db.cursor.execute(f"delete from Employee where id={values[0]}")
+                    self.db.connection.commit()
+                    tree.delete(item_id)
+                    messagebox.showinfo("Успешно!", "Сотрудник успешно удален!")
+                except:
+                    messagebox.showerror("Ошибка!", "Невозможно удалить сотрудника, который фигурирует в документах!")
             case "Заправки":
                 pass
             case "Неполадки":
@@ -688,7 +710,7 @@ class MainApp:
                 "UPDATE Employee SET FIO = '{FIO}', id_post = {id_post}, BirthDate = '{birth_date}', "
                 "INN = '{INN}', phoneNumber = '{phone}', login = '{login}', password = '{password}' "
                 "WHERE id = {TAB}"
-            ).format(FIO=FIO_new, id_post=selected_post.id if selected_post else 0,
+            ).format(FIO=FIO_new, id_post=selected_post.code if selected_post else 0,
                      birth_date=birth_date_new, INN=INN_new, phone=phone_new, login=login_new,
                      password=password_new, TAB=TAB)
             try:
