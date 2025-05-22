@@ -508,56 +508,58 @@ class ReportsWindow:
             headers = [tree.heading("#0")["text"]] + [tree.heading(c)["text"] for c in tree["columns"]]
             cols = ["#0"] + list(tree["columns"])
 
-        # 3) Собрать все строки (с учётом иерархии)
-        def collect(parent=""):
+        # 3) Собрать все строки вместе с их iid
+        def collect_pairs(parent=""):
             out = []
             for iid in tree.get_children(parent):
+                # собираем данные строки
                 row = []
                 if not is_mal:
                     row.append(tree.item(iid)["text"])
                 for c in tree["columns"]:
                     row.append(tree.set(iid, c))
-                out.append(row)
-                out += collect(iid)
+                out.append((iid, row))
+                # рекурсивно всех потомков
+                out += collect_pairs(iid)
             return out
-        data_rows = collect()
 
-        # 4) Посчитать общий итог по числовым колонкам (например, последняя колонка)
+        pairs = collect_pairs()
+        # для построения таблицы в PDF нужен просто список списков row
+        data_rows = [row for iid, row in pairs]
+
+        # 4) Корректный подсчёт итогов — только по leaf-узлам
         overall = 0.0
         if not is_mal:
-            # допустим, итог берем из последнего столбца
-            for r in data_rows:
+            for iid, row in pairs:
+                # пропускаем группы (у которых есть дети)
+                if tree.get_children(iid):
+                    continue
+                # пытаемся сложить последний столбец
+                if "subtotal" in tree.item(iid).get("tags", ()):
+                    continue
                 try:
-                    overall += float(r[-1])
-                except:
+                    overall += float(row[-1])
+                except (ValueError, TypeError):
                     pass
 
-        # 5) Подготовить стили и размеры
+        # 5) Подготовить стили и зарегистрировать шрифт
         pdfmetrics.registerFont(TTFont('DejaVuSans', 'DejaVuSans.ttf'))
         styles = getSampleStyleSheet()
-        title_st = styles['Title'].clone('t'); title_st.fontName='DejaVuSans'; title_st.fontSize=16
-        small_st = styles['Normal'].clone('n'); small_st.fontName='DejaVuSans'; small_st.fontSize=6
-        bold_st  = styles['Normal'].clone('b'); bold_st.fontName='DejaVuSans'; bold_st.fontSize=8
-
-        # Площадь для таблицы
-        pw, ph = landscape(letter)
-        margin = 30
-        avail_width = pw - 2*margin
-        col_w = avail_width / len(headers)
-
-        # 6) Построить заголовок и дату (дата — справа)
-        creation = datetime.now().strftime("%Y-%m-%d")
-        period_text = f"Период: с {start_date} по {end_date}"
-        avail_width = letter[0] - 2*inch
         title_st = ParagraphStyle('title', fontName='DejaVuSans', fontSize=14, leading=16)
         small_st = ParagraphStyle('small', fontName='DejaVuSans', fontSize=10)
-        bold_st  = ParagraphStyle('bold',  fontName='DejaVuSans-Bold', fontSize=10)
+        bold_st  = ParagraphStyle('bold',  fontName='DejaVuSans', fontSize=10)
+
+        # 6) Построить заголовок и дату
+        creation = datetime.now().strftime("%Y-%m-%d")
+        period_text = f"Период: с {start_date} по {end_date}"
+        page_width, _ = landscape(letter)
+        margin = 30
+        avail_width = page_width - 2*margin
+
         header_table = Table(
             [
-            # строка с заголовком и датой
-            [Paragraph(title, title_st), Paragraph(f"Дата: {creation}", bold_st)],
-            # строка с периодом и пустой ячейкой справа
-            [Paragraph(period_text, small_st), ""]
+                [Paragraph(title, title_st), Paragraph(f"Дата: {creation}", bold_st)],
+                [Paragraph(period_text, small_st), ""]
             ],
             colWidths=[avail_width*0.7, avail_width*0.3]
         )
@@ -571,40 +573,41 @@ class ReportsWindow:
         ]))
 
         # 7) Построить таблицу с данными
+        col_width = avail_width / len(headers)
         table_data = [[Paragraph(h, small_st) for h in headers]]
         for row in data_rows:
             table_data.append([Paragraph(str(cell), small_st) for cell in row])
-        tbl = Table(table_data, colWidths=[col_w]*len(headers))
+
+        tbl = Table(table_data, colWidths=[col_width]*len(headers))
         tbl.setStyle(TableStyle([
-            ('FONTNAME', (0,0), (-1,-1), 'DejaVuSans'),
-            ('FONTSIZE',  (0,0), (-1,0),   8),
-            ('FONTSIZE',  (0,1), (-1,-1),  6),
-            ('BACKGROUND',(0,0),(-1,0),    colors.grey),
-            ('TEXTCOLOR', (0,0),(-1,0),    colors.whitesmoke),
-            ('ALIGN',     (0,0),(-1,-1),   'CENTER'),
-            ('VALIGN',    (0,0),(-1,-1),   'MIDDLE'),
-            ('INNERGRID', (0,0),(-1,-1),   0.25, colors.grey),
-            ('BOX',       (0,0),(-1,-1),   0.5, colors.black),
-            ('LEFTPADDING',(0,0),(-1,-1),  2),
-            ('RIGHTPADDING',(0,0),(-1,-1), 2),
-            ('TOPPADDING',(0,0),(-1,-1),    1),
+            ('FONTNAME',    (0,0),(-1,-1),'DejaVuSans'),
+            ('FONTSIZE',    (0,0),(-1,0),   8),
+            ('FONTSIZE',    (0,1),(-1,-1),  6),
+            ('BACKGROUND',  (0,0),(-1,0),   colors.grey),
+            ('TEXTCOLOR',   (0,0),(-1,0),   colors.whitesmoke),
+            ('ALIGN',       (0,0),(-1,-1),  'CENTER'),
+            ('VALIGN',      (0,0),(-1,-1),  'MIDDLE'),
+            ('INNERGRID',   (0,0),(-1,-1),  0.25, colors.grey),
+            ('BOX',         (0,0),(-1,-1),  0.5, colors.black),
+            ('LEFTPADDING', (0,0),(-1,-1),  2),
+            ('RIGHTPADDING',(0,0),(-1,-1),  2),
+            ('TOPPADDING',  (0,0),(-1,-1),  1),
             ('BOTTOMPADDING',(0,0),(-1,-1), 1),
         ]))
 
-        # 8) Сборка элементов
+        # 8) Собрать все элементы для документа
         elems = [header_table, Spacer(1,12), tbl, Spacer(1,12)]
 
-        # 9) Общий итог (если не неполадки)
+        # 9) Добавить общий итог (если это не раздел неполадок)
         if overall and not is_mal:
             elems.append(Paragraph(f"Общий итог по документу: <b>{overall:.2f}</b>", bold_st))
             elems.append(Spacer(1,12))
 
-        # 10) Подпись (большим шрифтом)
-        sign = Paragraph("Подпись: ____________________", styles['Normal'].clone('s')\
-                         .clone('sig', fontName='DejaVuSans', fontSize=10))
-        elems.append(sign)
+        # 10) Подпись
+        sig_st = ParagraphStyle('sig', fontName='DejaVuSans', fontSize=10)
+        elems.append(Paragraph("Подпись: ____________________", sig_st))
 
-        # 11) Создать PDF в альбомной ориентации
+        # 11) Создать и сохранить PDF
         filename = f"report_{datetime.now():%Y%m%d_%H%M%S}.pdf"
         doc = SimpleDocTemplate(
             filename,
@@ -614,11 +617,16 @@ class ReportsWindow:
         )
         doc.build(elems)
 
-        # 12) Открыть автоматически
+        # 12) Открыть файл автоматически
         try:
-            if sys.platform.startswith("win"):    os.startfile(filename)
-            elif sys.platform=="darwin":          subprocess.call(["open",filename])
-            else:                                 subprocess.call(["xdg-open",filename])
-        except: pass
+            if sys.platform.startswith("win"):
+                os.startfile(filename)
+            elif sys.platform == "darwin":
+                subprocess.call(["open", filename])
+            else:
+                subprocess.call(["xdg-open", filename])
+        except:
+            pass
 
         showinfo("Успех", f"Отчет сохранен как {filename}")
+
