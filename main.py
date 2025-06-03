@@ -409,6 +409,8 @@ class MainApp:
                 self.show_add_malfunctiontype_form()
             case "Локации":
                 self.show_add_location_form()
+            case "Модели аппаратов":
+                self.show_add_vendor_form()
             case "Аппараты":
                 self.show_add_vendor_usage_form()
             case "Лампы":
@@ -472,7 +474,15 @@ class MainApp:
                     tree.delete(item_id)
                     messagebox.showinfo("Успешно!", "Локация успешно удалена!")
                 except:
-                    messagebox.showerror("Ошибка!", "Невозможно удалить локацию, к которой уже привязан аппарат!")        
+                    messagebox.showerror("Ошибка!", "Невозможно удалить локацию, к которой уже привязан аппарат!") 
+            case "Модели аппаратов":
+                try:
+                    self.db.cursor.execute(f"delete from Vendors where id={values[0]}")
+                    self.db.connection.commit()
+                    tree.delete(item_id)
+                    messagebox.showinfo("Успешно!", "Модель аппарата успешно удалена!")
+                except:
+                    messagebox.showerror("Ошибка!", "Невозможно удалить уже использованную модель аппарата!")           
             case "Аппараты":
                 try:
                     self.db.cursor.execute(f"delete from Vendor_usage where id={values[0]}")
@@ -1104,6 +1114,51 @@ class MainApp:
             form.destroy()
 
         ttk.Button(frame, text="Сохранить", command=save_location).grid(row=2, column=0, columnspan=2, pady=10)
+        form.mainloop()
+    
+    # Форма для добавления модели аппарата 
+    def show_add_vendor_form(self):
+        form = Toplevel(self.root)
+        form.title("Добавление модели аппарата")
+        form.geometry("400x250")
+        
+        frame = ttk.Frame(form)
+        frame.pack(padx=10, pady=10, fill="x")
+
+        ttk.Label(frame, text="Модель аппарата:").grid(row=0, column=0, sticky="w", pady=5)
+        entry_name = ttk.Entry(frame)
+        entry_name.grid(row=0, column=1, pady=5, sticky="ew")
+
+        ttk.Label(frame, text="Описание:").grid(row=1, column=0, sticky="nw", pady=5)
+        text_description = Text(frame, width=30, height=5, wrap="word")
+        text_description.grid(row=1, column=1, pady=5, sticky="ew")
+        text_description.configure(relief="solid", borderwidth=1, highlightthickness=0, padx=2, pady=2)
+
+        def save_vendor():
+            name = entry_name.get().strip()
+            description = text_description.get("1.0", END).strip()
+            if not name:
+                showwarning("Ошибка", "Введите модель аппарата!")
+                return
+            if not description:
+                showwarning("Ошибка", "Введите описание аппарата!")
+                return
+            query = f"INSERT INTO Vendors (Name, Description) VALUES ('{name}', '{description}')"
+            try:
+                self.db.cursor.execute(query)
+                self.db.connection.commit()
+                showinfo("Успех", "Модель аппарата успешно добавлена!")
+                self.fetch_data()
+                self.refresh_widgets()
+                try:
+                    self.notebook.select(self.vendor_tab)
+                except:
+                    pass
+            except Exception as e:
+                showerror("Ошибка", f"Не удалось добавить модель аппарата: {e}")
+            form.destroy()
+
+        ttk.Button(frame, text="Сохранить", command=save_vendor).grid(row=2, column=0, columnspan=2, pady=10)
         form.mainloop()
         
     # Форма для добавления аппаратов (Vendor_usage)
