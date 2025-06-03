@@ -367,7 +367,7 @@ class MainApp:
         control_frame = ttk.Frame(main_frame)
         control_frame.pack(fill=X, pady=10)
         
-        actions = ["Добавить", "Редактировать", "Удалить", "Обновить"]
+        actions = ["Добавить", "Редактировать", "Удалить"]
         for action in actions:
             if action == "Добавить":
                 ttk.Button(control_frame, 
@@ -401,6 +401,14 @@ class MainApp:
         tab_name = self.notebook.tab(current_tab_index, "text")
         
         match tab_name:
+            case "Должности":
+                self.show_add_post_form()
+            case "Типы ламп":
+                self.show_add_lamp_type_form()
+            case "Типы неисправностей":
+                self.show_add_malfunctiontype_form()
+            case "Локации":
+                self.show_add_location_form()
             case "Аппараты":
                 self.show_add_vendor_usage_form()
             case "Лампы":
@@ -439,6 +447,32 @@ class MainApp:
             return 
         
         match(tab_name):
+            case "Должности":
+                try:
+                    self.db.cursor.execute(f"delete from Post where id={values[0]}")
+                    self.db.connection.commit()
+                    tree.delete(item_id)
+                    messagebox.showinfo("Успешно!", "Должность успешно удалена!")
+                except:
+                    messagebox.showerror("Ошибка!", "Невозможно удалить должность, которая фигурирует у сотрудников!")
+            case "Типы ламп":
+                try:
+                    self.db.cursor.execute(f"delete from Lamp_type where id={values[0]}")
+                    self.db.connection.commit()
+                    tree.delete(item_id)
+                    messagebox.showinfo("Успешно!", "Тип лампы успешно удален!")
+                except:
+                    messagebox.showerror("Ошибка!", "Невозможно удалить тип лампы, который фигурирует в лампах!")
+            case "Типы неисправностей":
+                showinfo("", "В разработке!")
+            case "Локации":
+                try:
+                    self.db.cursor.execute(f"delete from location where id={values[0]}")
+                    self.db.connection.commit()
+                    tree.delete(item_id)
+                    messagebox.showinfo("Успешно!", "Локация успешно удалена!")
+                except:
+                    messagebox.showerror("Ошибка!", "Невозможно удалить локацию, к которой уже привязан аппарат!")        
             case "Аппараты":
                 try:
                     self.db.cursor.execute(f"delete from Vendor_usage where id={values[0]}")
@@ -954,6 +988,124 @@ class MainApp:
     
     # Формы добавления
     
+    # Форма для добавления должностей (Post)
+    def show_add_post_form(self):
+        form = Toplevel(self.root)
+        form.title("Добавление должности")
+        form.geometry("350x150")
+        
+        frame = ttk.Frame(form)
+        frame.pack(padx=10, pady=10, fill="x")
+
+        ttk.Label(frame, text="Название должности:").grid(row=0, column=0, sticky="w", pady=5)
+        entry_name = ttk.Entry(frame)
+        entry_name.grid(row=0, column=1, pady=5, sticky="ew")
+
+        def save_post():
+            name = entry_name.get().strip()
+            if not name:
+                showwarning("Ошибка", "Введите название должности!")
+                return
+            query = f"INSERT INTO Post (Name) VALUES ('{name}')"
+            try:
+                self.db.cursor.execute(query)
+                self.db.connection.commit()
+                showinfo("Успех", "Должность успешно добавлена!")
+                self.fetch_data()
+                self.refresh_widgets()
+                # перейти на вкладку «Должности», если она у вас хранится в self.post_tab
+                try:
+                    self.notebook.select(self.post_tab)
+                except:
+                    pass
+            except Exception as e:
+                showerror("Ошибка", f"Не удалось добавить должность: {e}")
+            form.destroy()
+
+        ttk.Button(frame, text="Сохранить", command=save_post).grid(row=1, column=0, columnspan=2, pady=10)
+        form.mainloop()
+        
+    # Форма для добавления Типов ламп (Lamp types)
+    def show_add_lamp_type_form(self):
+        form = Toplevel(self.root)
+        form.title("Добавление типа лампы")
+        form.geometry("350x150")
+        
+        frame = ttk.Frame(form)
+        frame.pack(padx=10, pady=10, fill="x")
+
+        ttk.Label(frame, text="Название типа:").grid(row=0, column=0, sticky="w", pady=5)
+        entry_name = ttk.Entry(frame)
+        entry_name.grid(row=0, column=1, pady=5, sticky="ew")
+
+        def save_lamp_type():
+            name = entry_name.get().strip()
+            if not name:
+                showwarning("Ошибка", "Введите название типа лампы!")
+                return
+            query = f"INSERT INTO Lamp_Type (Name) VALUES ('{name}')"
+            try:
+                self.db.cursor.execute(query)
+                self.db.connection.commit()
+                showinfo("Успех", "Тип лампы успешно добавлен!")
+                self.fetch_data()
+                self.refresh_widgets()
+                try:
+                    self.notebook.select(self.lamp_type_tab)
+                except:
+                    pass
+            except Exception as e:
+                showerror("Ошибка", f"Не удалось добавить тип лампы: {e}")
+            form.destroy()
+
+        ttk.Button(frame, text="Сохранить", command=save_lamp_type).grid(row=1, column=0, columnspan=2, pady=10)
+        form.mainloop()
+    # Форма для добавления Типа неисправности
+    def show_add_malfunctiontype_form(self):
+        showinfo("В разработке!", "Данная форма в разработке!")
+        return
+        
+    # Форма для добавления Локации (Location)
+    def show_add_location_form(self):
+        form = Toplevel(self.root)
+        form.title("Добавление локации")
+        form.geometry("400x200")
+        
+        frame = ttk.Frame(form)
+        frame.pack(padx=10, pady=10, fill="x")
+
+        ttk.Label(frame, text="Название объекта:").grid(row=0, column=0, sticky="w", pady=5)
+        entry_name = ttk.Entry(frame)
+        entry_name.grid(row=0, column=1, pady=5, sticky="ew")
+
+        ttk.Label(frame, text="Адрес:").grid(row=1, column=0, sticky="w", pady=5)
+        entry_address = ttk.Entry(frame)
+        entry_address.grid(row=1, column=1, pady=5, sticky="ew")
+
+        def save_location():
+            name = entry_name.get().strip()
+            address = entry_address.get().strip()
+            if not name or not address:
+                showwarning("Ошибка", "Заполните оба поля!")
+                return
+            query = f"INSERT INTO Location (Name, Address) VALUES ('{name}', '{address}')"
+            try:
+                self.db.cursor.execute(query)
+                self.db.connection.commit()
+                showinfo("Успех", "Локация успешно добавлена!")
+                self.fetch_data()
+                self.refresh_widgets()
+                try:
+                    self.notebook.select(self.location_tab)
+                except:
+                    pass
+            except Exception as e:
+                showerror("Ошибка", f"Не удалось добавить локацию: {e}")
+            form.destroy()
+
+        ttk.Button(frame, text="Сохранить", command=save_location).grid(row=2, column=0, columnspan=2, pady=10)
+        form.mainloop()
+        
     # Форма для добавления аппаратов (Vendor_usage)
     def show_add_vendor_usage_form(self):
         form = Toplevel(self.root)
@@ -1232,7 +1384,7 @@ class MainApp:
         tree.configure(yscrollcommand=vsb.set)
         vsb.pack(side="right", fill="y")
         
-        ttk.Button(form, text="Добавить строку в табличную часть", command=lambda: self.add_lamp_refill_row(tree)).pack(pady=5)
+        ttk.Button(form, text="Добавить лампу", command=lambda: self.add_lamp_refill_row(tree)).pack(pady=5)
         def save_refill():
             # Получение основных данных
             emp_str = entry_employee.get().strip()
@@ -1520,6 +1672,17 @@ class MainApp:
         
         
         def add_row():
+            if code is None:
+                showwarning("Ошибка!", "Сначала выберите лампу")
+                return
+            
+            # Проверка на дублирование ламп из табличной части
+            for iid in tree.get_children():
+                existing_code = tree.item(iid)["values"][0]
+                if existing_code == code:
+                    showwarning("Ошибка!", "Выбранная лампа уже добавлена!")
+                    return
+            
             try:
                 quantity = int(entry_quantity.get())
                 # Дальнейшая обработка quantity
@@ -1536,7 +1699,7 @@ class MainApp:
             tree.insert("", END, values=row_values)
             row_win.destroy()
             
-        ttk.Button(row_win, text="Добавить", command=add_row).pack(pady=10)
+        ttk.Button(row_win, text="Добавить лампу", command=add_row).pack(pady=10)
 
     def refresh_widgets(self):
         # Удаляем все виджеты из главного окна
