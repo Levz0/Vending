@@ -206,7 +206,7 @@ class MainApp:
             self.db.cursor.execute(f"SELECT Name FROM Malfunction_Type WHERE id = {malfunction[1] }") 
             malfunction_type = self.db.cursor.fetchone()[0]    
             self.db.cursor.execute(f"SELECT Name FROM Vendors WHERE id = (SELECT id_vendor FROM Vendor_usage WHERE id = {malfunction[2]})")   
-            vendor_usage = self.db.cursor.fetchone()[0]
+            vendor_usage = next((vu for vu in self.vendor_usages if vu.code == malfunction[2]), None)
             
             # Проверяем, существует ли id_employee
             if malfunction[3] is not None:
@@ -874,17 +874,17 @@ class MainApp:
         entry_type.grid(row=0, column=1, pady=5, sticky="ew")
         
         ttk.Label(frame, text="Мастер по ремонту:").grid(row=1, column=0, sticky="w", pady=5)
-        entry_employee = ttk.Entry(frame)
+        entry_employee = ttk.Combobox(frame, values=[employee for employee in self.employees])
         entry_employee.insert(0, values[2])
         entry_employee.grid(row=1, column=1, pady=5, sticky="ew")
         
         ttk.Label(frame, text="Статус:").grid(row=2, column=0, sticky="w", pady=5)
-        entry_status = ttk.Entry(frame)
+        entry_status = ttk.Combobox(frame, values=["Новая", "В процессе", "Решена"])
         entry_status.insert(0, values[3])
         entry_status.grid(row=2, column=1, pady=5, sticky="ew")
         
         ttk.Label(frame, text="Аппарат:").grid(row=3, column=0, sticky="w", pady=5)
-        entry_vendor_usage = ttk.Entry(frame)
+        entry_vendor_usage = ttk.Combobox(frame, values=[vendorUsage for vendorUsage in self.vendor_usages])
         entry_vendor_usage.insert(0, values[4])
         entry_vendor_usage.grid(row=3, column=1, pady=5, sticky="ew")
         
@@ -893,12 +893,12 @@ class MainApp:
         entry_reason.insert(0, values[5])
         entry_reason.grid(row=4, column=1, pady=5, sticky="ew")
         
-        ttk.Label(frame, text="Дата возникновения (yyyy-MM-dd):").grid(row=5, column=0, sticky="w", pady=5)
+        ttk.Label(frame, text="Дата возникновения:").grid(row=5, column=0, sticky="w", pady=5)
         entry_report_date = DateEntry(frame, date_pattern="yyyy-MM-dd", locale="ru_RU", state="readonly", maxdate=datetime.now())
         entry_report_date.set_date(values[6])
         entry_report_date.grid(row=5, column=1, pady=5, sticky="ew")
         
-        ttk.Label(frame, text="Дата ремонта (yyyy-MM-dd):").grid(row=6, column=0, sticky="w", pady=5)
+        ttk.Label(frame, text="Дата ремонта:").grid(row=6, column=0, sticky="w", pady=5)
         entry_resolution_date = DateEntry(frame, date_pattern="yyyy-MM-dd", locale="ru_RU", state="readonly", maxdate=datetime.now())
         # Если значение пустое или "-", оставляем пустое
         if values[7] not in ("", "-"):
@@ -1085,11 +1085,11 @@ class MainApp:
         frame.pack(padx=10, pady=10, fill="x")
 
         ttk.Label(frame, text="Название объекта:").grid(row=0, column=0, sticky="w", pady=5)
-        entry_name = ttk.Entry(frame)
+        entry_name = ttk.Entry(frame, width=40)
         entry_name.grid(row=0, column=1, pady=5, sticky="ew")
 
         ttk.Label(frame, text="Адрес:").grid(row=1, column=0, sticky="w", pady=5)
-        entry_address = ttk.Entry(frame)
+        entry_address = ttk.Entry(frame, width=40)
         entry_address.grid(row=1, column=1, pady=5, sticky="ew")
 
         def save_location():
@@ -1735,7 +1735,7 @@ class MainApp:
             for iid in tree.get_children():
                 existing_code = tree.item(iid)["values"][0]
                 if existing_code == code:
-                    showwarning("Ошибка!", "Выбранная лампа уже добавлена!")
+                    showerror("Ошибка!", "Выбранная лампа уже добавлена!")
                     return
             
             try:
